@@ -19,7 +19,7 @@ if __name__ == "__main__":
     assert dataset
     dataloader = DataLoader(dataset, batch_size=opt.batchSize,
                             shuffle=True, last_batch='discard',
-                            num_workers=opt.workers)
+                            pin_memory=True, num_workers=opt.workers)
 
     mlp_G = MLP_G(opt.imageSize, opt.nz, opt.ngf, opt.nc)
     mlp_D = MLP_D(opt.imageSize, opt.ndf, opt.nc)

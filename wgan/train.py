@@ -115,7 +115,6 @@ def train(netG, netD, dataloader, opt):
                     fake = netG(noise)
                     errD_fake = netD(fake.detach())
                     errD = errD_real - errD_fake
-                    #errD = mx.gluon.loss.L1Loss()(errD_real, errD_fake)
                     errD.backward()
                 trainer_D.step(1)
 
