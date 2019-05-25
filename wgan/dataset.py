@@ -30,7 +30,7 @@ class LSUNClass(gluon.data.Dataset):
                              readahead=False, meminit=False)
         with self.env.begin(write=False) as txn:
             #self.length = txn.stat()['entries']
-            self.length = 100
+            self.length = 1000000
         cache_file = '_cache_' + root.replace('/', '_')
         if os.path.isfile(cache_file):
             self.keys = pickle.load(open(cache_file, "rb"))
@@ -38,7 +38,7 @@ class LSUNClass(gluon.data.Dataset):
             with self.env.begin(write=False) as txn:
                 #self.keys = [key for key, _ in txn.cursor()]
                 self.keys = []
-                cnt = 100
+                cnt = 1000000
                 for key, _ in txn.cursor():
                     if cnt <= 0:
                         break

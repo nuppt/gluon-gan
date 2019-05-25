@@ -40,8 +40,8 @@ class MLP_D(nn.Block):
     def forward(self, input):
         input = input.reshape((input.shape[0], -1))
         output = self.base(input)
-        output = output.mean(axis=1)
-        return output
+        output = output.mean(axis=0)
+        return output #.reshape(1)
 
 
 class DCGAN_G(nn.Block):
@@ -127,3 +127,4 @@ class DCGAN_D(nn.Block):
         output = self.base(input)
         output = output.mean(axis=0)
         return output.reshape(1)
+

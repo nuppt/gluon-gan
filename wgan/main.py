@@ -19,7 +19,7 @@ if __name__ == "__main__":
     assert dataset
     dataloader = DataLoader(dataset, batch_size=opt.batchSize,
                             shuffle=True, last_batch='discard',
-                            num_workers=opt.workers)
+                            pin_memory=True, num_workers=opt.workers)
 
     # Choose G and D in [MLP_G, MLP_D, DCGAN_G, DCGAN_D, DCGAN_G_NOBN, DCGAN_D_NOBN]
     if opt.mlp_G:
