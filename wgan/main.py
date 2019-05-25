@@ -21,7 +21,15 @@ if __name__ == "__main__":
                             shuffle=True, last_batch='discard',
                             num_workers=opt.workers)
 
-    mlp_G = MLP_G(opt.imageSize, opt.nz, opt.ngf, opt.nc)
-    mlp_D = MLP_D(opt.imageSize, opt.ndf, opt.nc)
+    # Choose G and D in [MLP_G, MLP_D, DCGAN_G, DCGAN_D, DCGAN_G_NOBN, DCGAN_D_NOBN]
+    if opt.mlp_G:
+        net_G = MLP_G(opt.imageSize, opt.nz, opt.ngf, opt.nc)
+    else:
+        net_G = DCGAN_G(opt.imageSize, opt.nz, opt.ngf, opt.nc, opt.n_extra_layers)
 
-    train(mlp_G, mlp_D, dataloader, opt)
+    if opt.mlp_D:
+        net_D = MLP_D(opt.imageSize, opt.ndf, opt.nc)
+    else:
+        net_D = DCGAN_D(opt.imageSize, opt.nc, opt.ndf, opt.n_extra_layers)
+
+    train(net_G, net_D, dataloader, opt)
