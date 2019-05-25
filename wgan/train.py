@@ -5,6 +5,7 @@ from mxnet import nd, init, autograd
 from mxboard import SummaryWriter
 
 import numpy as np
+import random
 from viz import save_images
 
 # custom weights initialization called on netG and netD
@@ -45,10 +46,16 @@ def train(netG, netD, dataloader, opt):
     Entry of Training process
     :return:
     '''
+
+    print("Random Seed: ", opt.manualSeed)
+    random.seed(opt.manualSeed)
+    mx.random.seed(opt.manualSeed)
+
     ctx = try_gpu()
+    print("ctx: ", ctx)
 
     # initialize netG, netD
-    netG.initialize(init.Xavier(factor_type='in',magnitude=0.01), ctx=ctx)
+    netG.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
     custom_init_weights(netG.base)
     if opt.netG != '': # load checkpoint if needed
         netG.load_parameters(opt.netG)
@@ -60,7 +67,7 @@ def train(netG, netD, dataloader, opt):
     print(netD)
 
     # A pass forward to initialize netG, netD (because of defered initialization)
-    init_x = nd.array(np.ones(shape=(opt.batchSize, opt.nz)), ctx=ctx)  # batchsize=8, nz=100
+    init_x = nd.array(np.ones(shape=(opt.batchSize, opt.nz, 1, 1)), ctx=ctx)  # batchsize=8, nz=100
     init_x = netG(init_x)
     _ = netD(init_x)
 
@@ -105,8 +112,6 @@ def train(netG, netD, dataloader, opt):
                 i += 1
 
                 # train with real
-                batch_size = data.shape[0]
-
                 with autograd.record():
                     errD_real = netD(data)
 

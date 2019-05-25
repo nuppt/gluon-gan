@@ -48,15 +48,14 @@ class DCGAN_G(nn.Block):
     def __init__(self, size_img, num_z, num_hidden, num_c, num_extra_layers=0):
         super(DCGAN_G, self).__init__()
 
+        cngf, t_size_img = num_hidden // 2, 4
+        while t_size_img != size_img:
+            cngf = cngf * 2
+            t_size_img = t_size_img * 2
+        num_hidden = cngf
 
         with self.name_scope():
             self.base = nn.Sequential()
-
-            cngf, t_size_img = num_hidden // 2, 4
-            while t_size_img != size_img:
-                cngf = cngf * 2
-                t_size_img = t_size_img * 2
-            num_hidden = cngf
 
             # inpurt is Z (nz dim vector), mapping to a convNet
             self.base.add(nn.Conv2DTranspose(channels=num_hidden, in_channels=num_z,
@@ -70,8 +69,10 @@ class DCGAN_G(nn.Block):
             while size_conv < size_img // 2:
                 self.base.add(nn.Conv2DTranspose(channels=num_hidden // 2, in_channels=num_hidden,
                                                  kernel_size=4, strides=2, padding=1, use_bias=False))
-                self.base.add(nn.BatchNorm(in_channels=num_hidden))
+                self.base.add(nn.BatchNorm(in_channels=num_hidden // 2))
                 self.base.add(nn.LeakyReLU(0))
+                num_hidden = num_hidden // 2
+                size_conv *= 2
 
             for _ in range(num_extra_layers):
                 self.base.add(nn.Conv2D(channels=num_hidden, in_channels=num_hidden,
