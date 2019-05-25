@@ -6,6 +6,7 @@ from mxboard import SummaryWriter
 
 import numpy as np
 import random
+import time
 from viz import save_images
 
 # custom weights initialization called on netG and netD
@@ -90,6 +91,7 @@ def train(netG, netD, dataloader, opt):
         data_iter = iter(dataloader)
         i = 0
         while i < len(dataloader):
+            start_time = time.time()
             ############################
             # (1) Update D network
             ###########################
@@ -136,9 +138,10 @@ def train(netG, netD, dataloader, opt):
             trainer_G.step(1)
             gen_iterations += 1
 
-            print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f'
+            print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f,  time:[%f]'
                   % (epoch, opt.num_iter, i, len(dataloader), gen_iterations,
-                     errD.asnumpy()[0], errG.asnumpy()[0], errD_real.asnumpy()[0], errD_fake.asnumpy()[0]))
+                     errD.asnumpy()[0], errG.asnumpy()[0], errD_real.asnumpy()[0], errD_fake.asnumpy()[0],
+                     time.time() - start_time))
 
             sw.add_scalar(
                 tag='loss_D',
