@@ -9,7 +9,7 @@ from mxnet.gluon.data import DataLoader
 if __name__ == "__main__":
     opt = parse_args()
 
-    dataset = LSUN(root=opt.dataroot, classes=['bedroom_train'],
+    dataset = LSUN(root=opt.data_root, classes=['bedroom_train'],
                    transform=transforms.Compose([
                        transforms.Resize(opt.imageSize, keep_ratio=True, interpolation=3),
                        transforms.CenterCrop(opt.imageSize),

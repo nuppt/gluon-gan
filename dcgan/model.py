@@ -1,4 +1,5 @@
 from mxnet.gluon import nn
+from mxnet import nd
 
 
 class DCGAN_G(nn.Block):
@@ -83,6 +84,6 @@ class DCGAN_D(nn.Block):
 
     def forward(self, input):
         output = self.base(input)
-        output = output.mean(axis=0)
-        return output.reshape(1)
+        # output = output.mean(axis=0)
+        return nd.squeeze(output.reshape(-1, 1))
 
