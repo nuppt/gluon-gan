@@ -113,14 +113,14 @@ def train(netG, netD, dataloader, opt):
                 data = data.as_in_context(ctx)
                 i += 1
 
-                # train with real
                 with autograd.record():
+                    # train with real
                     errD_real = netD(data)
-
                     # train with fake
                     noise = mx.ndarray.random.normal(shape=(opt.batchSize, opt.nz, 1, 1), ctx=ctx)
                     fake = netG(noise)
                     errD_fake = netD(fake.detach())
+
                     errD = errD_real - errD_fake
                     errD.backward()
                 trainer_D.step(1)
@@ -149,8 +149,9 @@ def train(netG, netD, dataloader, opt):
                 global_step=gen_iterations)
 
             if gen_iterations % 500 == 0:
-                real_cpu = data * 0.5 + 0.5
-                save_images(real_cpu.asnumpy().transpose(0, 2, 3, 1), '{0}/real_samples.png'.format(opt.experiment))
+                real_imgs = data * 0.5 + 0.5 # data are normalized (mean=0.5, std=0.5)in Dataset.Transforms
+                save_images(real_imgs.asnumpy().transpose(0, 2, 3, 1),
+                            '{0}/real_samples{1}.png'.format(opt.experiment, gen_iterations))
                 fake = netG(fixed_noise.as_in_context(ctx))
                 fake = fake * 0.5 + 0.5
                 save_images(fake.asnumpy().transpose(0, 2, 3, 1),
