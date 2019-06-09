@@ -114,59 +114,24 @@ def train(net_G, net_F, net_DY, net_DX, dataloader, opt):
     loss_GAN, loss_CC, loss_Id = get_loss_functions(opt)
 
     print("Start training ...")
-    # for epoch in range(opt.num_epochs):
-    #     train_step(dataloader, net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, opt, ctx, sw, epoch)
-    #
-    #     # do checkpointing
-    #     net_G.save_parameters('{0}/netG_epoch_{1}.param'.format(opt.experiment, epoch))
-    #     net_D.save_parameters('{0}/netD_epoch_{1}.param'.format(opt.experiment, epoch))
+    for epoch in range(opt.num_epochs):
+        train_step(dataloader, net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX,
+                   loss_GAN, loss_CC, loss_Id, opt, ctx, sw, epoch)
+
+        # do checkpointing
+        net_G.save_parameters('{0}/netG_epoch_{1}.param'.format(opt.experiment, epoch))
+        net_D.save_parameters('{0}/netD_epoch_{1}.param'.format(opt.experiment, epoch))
 
 
 def train_step(dataloader, net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, opt, ctx, sw, epoch):
-    for i, (data, _) in enumerate(dataloader):
+    for i, (real_X, real_Y) in enumerate(dataloader):
         iter_id = epoch * len(dataloader) // opt.batchSize + i
 
         start_time = time.time()
-        data = data.as_in_context(ctx)
-        noise = mx.ndarray.random.normal(shape=(opt.batchSize, opt.nz, 1, 1), ctx=ctx)
+        real_X = real_X.as_in_context(ctx)
+        real_Y = real_Y.as_in_context(ctx)
 
-        ############################
-        # (1) Update D network:   maximize log(D(x)) + log(1 - D(G(z)))
-        ############################
-        with autograd.record():
-            # train with real
-            real_label = nd.ones((opt.batchSize,), ctx)
-            output_D_real = net_D(data)
-            # print("output_D_real: {}".format(output_D_real))
-            # print("real_label: {}".format(real_label))
-            err_D_real = loss_f(output_D_real, real_label)
-            D_x = output_D_real.mean()
-
-            # train with fake
-            fake_label = nd.zeros((opt.batchSize,), ctx)
-            fake = net_G(noise)
-            output_D_fake = net_D(fake.detach())
-            err_D_fake = loss_f(output_D_fake, fake_label)
-            D_G_z1 = output_D_fake.mean()
-
-            err_D = err_D_real + err_D_fake
-            err_D.backward()
-        trainer_D.step(1)
-
-        ############################
-        # (2) Update G network    maximize log(D(G(z)))
-        ############################
-        # in case our last batch was the tail batch of the dataloader,
-        # make sure we feed a full batch of noise
-        noise = mx.ndarray.random.normal(shape=(opt.batchSize, opt.nz, 1, 1), ctx=ctx)
-        real_label = nd.ones((opt.batchSize,), ctx)
-        with autograd.record():
-            fake = net_G(noise)
-            output_G = net_D(fake)
-            err_G = loss_f(output_G, real_label)
-            D_G_z2 = output_G.mean()
-            err_G.backward()
-        trainer_G.step(1)
+        optimize_parameters(net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, real_X, real_Y, opt, ctx)
 
         print('[%d/%d][%d/%d] Loss_D: %f, Loss_G: %f, Loss_D_real(D(x)): %f, D_G_z1: %f, D_G_z2: %f, time:[%f]'
               % (epoch, opt.num_epochs, i, len(dataloader),
@@ -211,3 +176,62 @@ def get_loss_functions(opt):
     loss_Identity = loss.L1Loss()
 
     return loss_GAN, loss_Cycle_Consistent, loss_Identity
+
+
+def optimize_parameters(net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, real_X, real_Y, opt, ctx):
+    """Calculate losses, gradients, and update network weights; called in every training iteration"""
+    # CycleGAN one pass forward
+    fake_Y, rec_X, fake_X, rec_Y = forward(net_G, net_F, real_X, real_Y)   # compute fake images and reconstruction images.
+
+    # G and F
+    backward_Gs()           # calculate gradients for G and F
+    trainer_G.step(1)       # update G's weights
+    trainer_F.step(1)       # update F's weights
+
+    # D_Y and D_X
+    backward_DY()           # calculate gradients for net_DY
+    backward_DX()           # calculate graidents for net_DX
+    trainer_DY.step(1)      # update net_DY's weights
+    trainer_DX.step(1)      # update net_DX's weights
+
+def forward(net_G, net_F, real_X, real_Y):
+    """Run forward pass.
+        1. X -> Y -> X
+        2. Y -> X -> Y
+    """
+
+    fake_Y = net_G(real_X)        # G(X)
+    rec_X = net_F(fake_Y)         # F(G(X)) ~ X
+
+    fake_X = net_F(real_Y)  # G_B(B)
+    rec_Y = net_G(fake_X)   # G_A(G_B(B))
+    return fake_Y, rec_X, fake_X, rec_Y
+
+def backward_Gs(opt, net_G, net_F, net_DY, net_DX, real_X, real_Y, loss_GAN, loss_CC, loss_Id):
+    """Calculate the loss for generators G and F"""
+    lambda_idt = opt.lambda_identity
+    lambda_A = opt.lambda_A
+    lambda_B = opt.lambda_B
+
+    loss_idt_X = 0
+    loss_idt_Y = 0
+    # Identity loss
+    if lambda_idt > 0:
+        # G_A should be identity if real_B is fed: ||G_A(B) - B||
+        idt_X = net_G(real_Y)
+        loss_idt_G = loss_Id(idt_X, real_Y) * lambda_B * lambda_idt
+        # G_B should be identity if real_A is fed: ||G_B(A) - A||
+        idt_Y = net_F(real_X)
+        loss_idt_F = loss_Id(idt_Y, real_X) * lambda_A * lambda_idt
+
+    # GAN loss DY(G(X))
+    loss_G_A = loss_GAN(netD_A(fake_B), True)
+    # GAN loss D_B(G_B(B))
+    loss_G_B = self.criterionGAN(self.netD_B(self.fake_A), True)
+    # Forward cycle loss || G_B(G_A(A)) - A||
+    loss_cycle_A = self.criterionCycle(self.rec_A, self.real_A) * lambda_A
+    # Backward cycle loss || G_A(G_B(B)) - B||
+    loss_cycle_B = self.criterionCycle(self.rec_B, self.real_B) * lambda_B
+    # combined loss and calculate gradients
+    loss_G = self.loss_G_A + self.loss_G_B + self.loss_cycle_A + self.loss_cycle_B + self.loss_idt_A + self.loss_idt_B
+    loss_G.backward()
