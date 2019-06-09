@@ -63,19 +63,19 @@ def init_networks(net_G, net_F, net_DY, net_DX, opt, ctx):
     # load checkpoint if needed
     if opt.netG_param != '':
         net_G.load_parameters(opt.netG_param)
-    print(net_G)
+    #print(net_G)
 
     if opt.netF_param != '':
         net_F.load_parameters(opt.netF_param)
-    print(net_F)
+    #print(net_F)
 
     if opt.netDY_param != '':
         net_DY.load_parameters(opt.netDY_param)
-    print(net_DY)
+    #print(net_DY)
 
     if opt.netDX_param != '':
         net_DX.load_parameters(opt.netDX_param)
-    print(net_DX)
+    #print(net_DX)
 
     # Domain X -> Y: A pass forward to initialize net_G, net_DY (because of defered initialization)
     init_x = nd.array(np.ones(shape=(opt.batch_size, opt.input_nc, opt.image_size, opt.image_size)), ctx=ctx)
@@ -107,25 +107,22 @@ def train(net_G, net_F, net_DY, net_DX, dataloader, opt):
     # initialize netG, netD
     net_G, net_F, net_DY, net_DX = init_networks(net_G, net_F, net_DY, net_DX, opt, ctx)
 
-    # # optimizer settings
-    # trainer_G = Trainer(net_G.collect_params(), optimizer='adam',
-    #                     optimizer_params={'learning_rate': opt.lrG, 'beta1': opt.beta1, 'beta2': 0.999})
-    # trainer_D = Trainer(net_D.collect_params(), optimizer='adam',
-    #                     optimizer_params={'learning_rate': opt.lrD, 'beta1': opt.beta1, 'beta2': 0.999})
-    #
-    # loss_f = loss.SigmoidBinaryCrossEntropyLoss()
-    #
-    # print("Start training ...")
-    #
+    # optimizer/trainer settings
+    trainer_G, trainer_F, trainer_DY, trainer_DX = get_trainers(opt, net_G=net_G, net_F=net_F, net_DY=net_DY, net_DX=net_DX)
+
+    # define loss functions
+    loss_GAN, loss_CC, loss_Id = get_loss_functions(opt)
+
+    print("Start training ...")
     # for epoch in range(opt.num_epochs):
-    #     train_step(dataloader, net_G, net_D, trainer_G, trainer_D, loss_f, opt, ctx, sw, epoch)
+    #     train_step(dataloader, net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, opt, ctx, sw, epoch)
     #
     #     # do checkpointing
     #     net_G.save_parameters('{0}/netG_epoch_{1}.param'.format(opt.experiment, epoch))
     #     net_D.save_parameters('{0}/netD_epoch_{1}.param'.format(opt.experiment, epoch))
 
 
-def train_step(dataloader, net_G, net_D, trainer_G, trainer_D, loss_f, opt, ctx, sw, epoch):
+def train_step(dataloader, net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, opt, ctx, sw, epoch):
     for i, (data, _) in enumerate(dataloader):
         iter_id = epoch * len(dataloader) // opt.batchSize + i
 
@@ -186,3 +183,31 @@ def train_step(dataloader, net_G, net_D, trainer_G, trainer_D, loss_f, opt, ctx,
             fake = net_G(noise.as_in_context(ctx))
             save_images(fake.asnumpy().transpose(0, 2, 3, 1),
                         '{0}/fake_samples_{1}.png'.format(opt.experiment, iter_id))
+
+
+def get_trainers(opt, **networks):
+    """Define trainers for networks according to opt."""
+
+    net_G = networks['net_G']
+    net_F = networks['net_F']
+    net_DY = networks['net_DY']
+    net_DX= networks['net_DX']
+
+    trainer_G = Trainer(net_G.collect_params(), optimizer='adam',
+                        optimizer_params={'learning_rate': opt.lrG, 'beta1': opt.beta1, 'beta2': 0.999})
+    trainer_F = Trainer(net_F.collect_params(), optimizer='adam',
+                        optimizer_params={'learning_rate': opt.lrG, 'beta1': opt.beta1, 'beta2': 0.999})
+    trainer_DY = Trainer(net_DY.collect_params(), optimizer='adam',
+                         optimizer_params={'learning_rate': opt.lrD, 'beta1': opt.beta1, 'beta2': 0.999})
+    trainer_DX = Trainer(net_DX.collect_params(), optimizer='adam',
+                         optimizer_params={'learning_rate': opt.lrD, 'beta1': opt.beta1, 'beta2': 0.999})
+
+    return trainer_G, trainer_F, trainer_DY, trainer_DX
+
+def get_loss_functions(opt):
+    """Define loss functions."""
+    loss_GAN = loss.SigmoidBinaryCrossEntropyLoss()
+    loss_Cycle_Consistent = loss.L1Loss()
+    loss_Identity = loss.L1Loss()
+
+    return loss_GAN, loss_Cycle_Consistent, loss_Identity

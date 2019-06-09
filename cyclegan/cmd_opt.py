@@ -41,6 +41,8 @@ def parse_args():
                         help='scaling factor for normal, xavier and orthogonal.')
     parser.add_argument('--init_type', type=str, default='normal',
                         help='network initialization [normal | xavier | orthogonal]')
+    parser.add_argument('--gan_mode', type=str, default='lsgan',
+                        help='the type of GAN objective. [vanilla| lsgan | wgan | wgan-gp]. vanilla GAN loss is the cross-entropy objective used in the original GAN paper.')
     parser.add_argument('--num_iter_D', type=int, default=1, help='number of D iters per each G iter')
     parser.add_argument('--experiment', default='./experiments', help='Where to store samples and models')
     parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is rmsprop)')
