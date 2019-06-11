@@ -15,7 +15,7 @@ def parse_args():
     parser.add_argument('--manualSeed', type=int, default=10, help='seed number for result reproduction')
     parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
     parser.add_argument('--batch_size', type=int, default=1, help='input batch size')
-    parser.add_argument('--image_size', type=int, default=286, help='scale images to this size')
+    parser.add_argument('--image_size', type=int, default=288, help='scale images to this size')
     parser.add_argument('--crop_size', type=int, default=256, help='then crop to this size')
     parser.add_argument('--input_nc', type=int, default=3,
                         help='# of input image channels: 3 for RGB and 1 for grayscale')
@@ -28,7 +28,8 @@ def parse_args():
     parser.add_argument('--lrG', type=float, default=0.0002, help='learning rate for Generator, default=0.0002')
     parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
     parser.add_argument('--netG_arch', type=str, default='resnet_9blocks', help='resnet_9blocks | resnet_6blocks')
-    parser.add_argument('--netD_arch', type=str, default='basic', help='basic | n_layers')
+    parser.add_argument('--netD_arch', type=str, default='n_layers', help='basic | n_layers')
+    parser.add_argument('--n_layers_D', type=int, default=3, help='only used if netD==n_layers')
     parser.add_argument('--norm', type=str, default='instance',
                         help='instance normalization or batch normalization [instance | batch | none]')
     parser.add_argument('--no_dropout', action='store_true', help='no dropout for the generator')
@@ -36,12 +37,11 @@ def parse_args():
     parser.add_argument('--netF_param', default='', help="path to netF (to continue training)")
     parser.add_argument('--netDY_param', default='', help="path to netDY (to continue training)")
     parser.add_argument('--netDX_param', default='', help="path to netDX (to continue training)")
-    parser.add_argument('--n_layers_D', type=int, default=3, help='only used if netD==n_layers')
     parser.add_argument('--init_gain', type=float, default=0.02,
                         help='scaling factor for normal, xavier and orthogonal.')
     parser.add_argument('--init_type', type=str, default='normal',
                         help='network initialization [normal | xavier | orthogonal]')
-    parser.add_argument('--gan_mode', type=str, default='lsgan',
+    parser.add_argument('--gan_mode', type=str, default='vanilla',
                         help='the type of GAN objective. [vanilla| lsgan | wgan | wgan-gp]. vanilla GAN loss is the cross-entropy objective used in the original GAN paper.')
     parser.add_argument('--lambda_A', type=float, default=10.0, help='weight for cycle loss (A -> B -> A)')
     parser.add_argument('--lambda_B', type=float, default=10.0, help='weight for cycle loss (B -> A -> B)')

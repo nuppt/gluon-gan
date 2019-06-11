@@ -3,7 +3,8 @@ from PIL import Image
 
 
 def get_transform(opt, params=None, grayscale=False, method=Image.BICUBIC, convert=True):
-    return None
+    return transforms.Compose([transforms.RandomResizedCrop(opt.crop_size),
+                               transforms.ToTensor()])
     # transform_list = []
     #
     # if grayscale:

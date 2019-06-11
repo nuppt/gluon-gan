@@ -10,7 +10,7 @@ from transform import *
 
 
 class UnpairedDataset(gluon.data.Dataset):
-    def __init__(self, opt):
+    def __init__(self, opt, transform=None):
         """Initialize this dataset class.
 
         Initialize:
@@ -60,12 +60,16 @@ class UnpairedDataset(gluon.data.Dataset):
         # 2. load image data
         x_img_nd = nd.array(Image.open(x_path).convert('RGB'))
         y_img_nd = nd.array(Image.open(y_path).convert('RGB'))
+        #print("x_img_nd shape: {}".format(x_img_nd.shape))
+        #print("y_img_nd shape: {}".format(y_img_nd.shape))
+
 
         # 3. apply transformer on image data
         x_img_nd = self.transformer_X(x_img_nd) if self.transformer_X else x_img_nd
-        y_img_nd = self.transformer_Y(x_img_nd) if self.transformer_Y else y_img_nd
+        y_img_nd = self.transformer_Y(y_img_nd) if self.transformer_Y else y_img_nd
 
-        return {'x': x_img_nd, 'y': y_img_nd, 'x_path': x_path, 'y_path': y_path}
+        #return {'x': x_img_nd, 'y': y_img_nd, 'x_path': x_path, 'y_path': y_path}
+        return x_img_nd, y_img_nd
 
 
     def __len__(self):

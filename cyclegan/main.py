@@ -19,13 +19,6 @@ if __name__ == "__main__":
 
     print("Data ready...")
 
-    # for i, data in enumerate(data_loader):
-    #     real_x = data['x']
-    #     real_y = data['y']
-    #     print(real_x.shape)
-    #     print(real_y.shape)
-    #     break
-
     # CycleGAN G and D
     # corresponding naming between paper and code:
     # paper      code           description

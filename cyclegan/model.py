@@ -16,28 +16,30 @@ class CycleGAN_G(nn.Block):
         else:
             raise ValueError('Unknown netG_arch.')
 
-        self.model = nn.Sequential()
-
+        self.block_c7s1_64 = nn.Sequential()
         block_c7s1_64 = [nn.ReflectionPad2D(3),
                          nn.Conv2D(channels=ngf, in_channels=input_nc, kernel_size=7, strides=1, padding=0, use_bias=use_bias),
                          norm_layer(in_channels=ngf),
                          nn.LeakyReLU(0)]
-        self.model.add(*block_c7s1_64)
+        self.block_c7s1_64.add(*block_c7s1_64)
 
+        self.block_dk = nn.Sequential()
         n_downsampling = 2
         for i in range(n_downsampling):  # add downsampling layers
             mult = 2 ** i
             block_dk = [nn.Conv2D(in_channels=ngf * mult, channels=ngf * mult * 2, kernel_size=3, strides=2, padding=1, use_bias=use_bias),
                         norm_layer(in_channels=ngf * mult * 2),
                         nn.LeakyReLU(0)]
-            self.model.add(*block_dk)
+            self.block_dk.add(*block_dk)
 
+        self.block_Rk = nn.Sequential()
         mult = 2 ** n_downsampling
         for i in range(n_blocks):  # add ResNet blocks
             block_Rk = [ResidualBlock(ngf * mult, padding_type=padding_type, norm_layer=norm_layer,
                                       use_dropout=use_dropout, use_bias=use_bias)]
-            self.model.add(*block_Rk)
+            self.block_Rk.add(*block_Rk)
 
+        self.block_uk = nn.Sequential()
         n_upsampling = 2
         for i in range(n_upsampling):  # add upsampling layers
             mult = 2 ** (n_upsampling - i)
@@ -45,17 +47,22 @@ class CycleGAN_G(nn.Block):
                                            padding=1, output_padding=1, use_bias=use_bias),
                         norm_layer(in_channels=ngf*mult//2),
                         nn.LeakyReLU(0)]
-            self.model.add(*block_uk)
+            self.block_uk.add(*block_uk)
 
+        self.block_c7s1_3 = nn.Sequential()
         block_c7s1_3 = [nn.ReflectionPad2D(3),
-                        nn.Conv2D(in_channels=ngf, channels=output_nc, kernel_size=7, strides=1, padding=0,
-                                  use_bias=use_bias),
-                        norm_layer(in_channels=ngf),
-                        nn.LeakyReLU(0)]
-        self.model.add(*block_c7s1_3)
+                        nn.Conv2D(in_channels=ngf, channels=output_nc, kernel_size=7, padding=0),
+                        nn.HybridLambda('tanh')]
+
+        self.block_c7s1_3.add(*block_c7s1_3)
 
     def forward(self, x):
-        return self.model(x)
+        x = self.block_c7s1_64(x)
+        x = self.block_dk(x)
+        x = self.block_Rk(x)
+        x = self.block_uk(x)
+        x = self.block_c7s1_3(x)
+        return x
 
 
 class CycleGAN_D(nn.Block):
@@ -65,29 +72,34 @@ class CycleGAN_D(nn.Block):
         norm_layer = get_norm_layer(norm_type=norm_type)
         use_bias = norm_layer != nn.BatchNorm
 
-        self.model = nn.Sequential()
-
+        self.block_C64 = nn.Sequential()
         block_C64 = [nn.Conv2D(in_channels=input_nc, channels=ndf, kernel_size=4, strides=2, padding=1),
                      nn.LeakyReLU(0.2)]
-        self.model.add(*block_C64)
+        self.block_C64.add(*block_C64)
 
+        self.block_C128_256_512 = nn.Sequential()
         mult = 1
         block_C128_256_512 = []
         for n in range(1, n_layers+1):
             mult_prev = mult
             mult = min(2 ** n, 8)
             block_C128_256_512 += [
-                nn.Conv2D(in_channels=ndf * mult_prev, channels=ndf * mult, kernel_size=4, strides=2, padding=1, use_bias=use_bias),
+                nn.Conv2D(in_channels=ndf * mult_prev, channels=ndf * mult, kernel_size=4,
+                          strides=(2 if n != n_layers else 1), padding=1, use_bias=use_bias),
                 norm_layer(in_channels=ndf * mult),
                 nn.LeakyReLU(0.2)
             ]
-        self.model.add(*block_C128_256_512)
+        self.block_C128_256_512.add(*block_C128_256_512)
 
+        self.block_output = nn.Sequential()
         block_output = [nn.Conv2D(in_channels=ndf * mult, channels=1, kernel_size=4, strides=1, padding=1)]  # output 1 channel prediction map
-        self.model.add(*block_output)
+        self.block_output.add(*block_output)
 
     def forward(self, x):
-        return self.model(x)
+        x = self.block_C64(x)
+        x = self.block_C128_256_512(x)
+        x = self.block_output(x)
+        return x
 
 
 ###############################################################################

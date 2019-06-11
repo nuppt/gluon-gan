@@ -78,12 +78,12 @@ def init_networks(net_G, net_F, net_DY, net_DX, opt, ctx):
     #print(net_DX)
 
     # Domain X -> Y: A pass forward to initialize net_G, net_DY (because of defered initialization)
-    init_x = nd.array(np.ones(shape=(opt.batch_size, opt.input_nc, opt.image_size, opt.image_size)), ctx=ctx)
+    init_x = nd.array(np.ones(shape=(opt.batch_size, opt.input_nc, opt.crop_size, opt.crop_size)), ctx=ctx)
     init_x = net_G(init_x)
     _ = net_DY(init_x)
 
     # Domain Y -> X: A pass forward to initialize net_F, net_DX (because of defered initialization)
-    init_x = nd.array(np.ones(shape=(opt.batch_size, opt.output_nc, opt.image_size, opt.image_size)), ctx=ctx)
+    init_x = nd.array(np.ones(shape=(opt.batch_size, opt.output_nc, opt.crop_size, opt.crop_size)), ctx=ctx)
     init_x = net_F(init_x)
     _ = net_DX(init_x)
 
@@ -128,7 +128,7 @@ def train(net_G, net_F, net_DY, net_DX, dataloader, opt):
 
 def train_step(dataloader, net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, opt, ctx, sw, epoch):
     for i, (real_X, real_Y) in enumerate(dataloader):
-        iter_id = epoch * len(dataloader) // opt.batchSize + i
+        iter_id = epoch * len(dataloader) // opt.batch_size + i
 
         start_time = time.time()
         real_X = real_X.as_in_context(ctx)
@@ -137,15 +137,23 @@ def train_step(dataloader, net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, t
         loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F, loss_DY, loss_DX = \
             optimize_parameters(net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX,
                                 loss_GAN, loss_CC, loss_Id, real_X, real_Y, opt, ctx)
+        #
+        # print('[{:d}/{:d}][{:d}/{:d}] loss_Gs: {:}, loss_G: {:.3f}, loss_F: {:.3f}, loss_cycle_G: {:.3f}, loss_cycle_F: {:.3f}, loss_idt_G: {:.3f}, loss_idt_F: {:.3f}, loss_DY: {:3.f}, loss_DX: {:3.f}    time:[{:f}]'.format(epoch, opt.num_epochs, i, len(dataloader),
+        #       loss_Gs.asnumpy()[0], loss_G.asnumpy()[0], loss_F.asnumpy()[0], loss_cycle_G.asnumpy()[0], loss_cycle_F.asnumpy()[0], loss_idt_G.asnumpy()[0], loss_idt_F.asnumpy()[0], loss_DY.asnumpy()[0], loss_DX.asnumpy()[0],
+        #       time.time() - start_time))
 
-        print('[{:d}/{:d}][{:d}/{:d}] loss_Gs: {:.3f}, loss_G: {:.3f}, loss_F: {:.3f}, loss_cycle_G: {:.3f}, loss_cycle_F: {:.3f}, loss_idt_G: {:.3f}, loss_idt_F: {:.3f}, loss_DY: {:3.f}, loss_DX: {:3.f}    time:[%f]'.format(epoch, opt.num_epochs, i, len(dataloader),
-            loss_Gs.asnumpy()[0], loss_G.asnumpy()[0], loss_F.asnumpy()[0], loss_cycle_G.asnumpy()[0], loss_cycle_F.asnumpy()[0],    loss_idt_G.asnumpy()[0], loss_idt_F.asnumpy()[0], loss_DY.asnumpy()[0], loss_DX.asnumpy()[0],
-            time.time() - start_time))
+        print(
+            '[{:d}/{:d}][{:d}/{:d}] loss_Gs: {:f}, loss_G: {:.3f}, loss_F: {:.3f}, loss_cycle_G: {:.3f}, loss_cycle_F: {:.3f}, loss_idt_G: {:.3f}, loss_idt_F: {:.3f}, loss_DY: {:.3f}, loss_DX: {:.3f}    time:[{:f}]'.format(
+                epoch, opt.num_epochs, i, len(dataloader),
+                loss_Gs.asnumpy()[0], loss_G.asnumpy()[0], loss_F.asnumpy()[0], loss_cycle_G.asnumpy()[0],
+                loss_cycle_F.asnumpy()[0], loss_idt_G.asnumpy()[0], loss_idt_F.asnumpy()[0], loss_DY.asnumpy()[0],
+                loss_DX.asnumpy()[0],
+                time.time() - start_time))
 
         sw.add_scalar(tag='loss_DY', value=-loss_DY.asnumpy()[0], global_step=iter_id)
         sw.add_scalar(tag='loss_DX', value=-loss_DX.asnumpy()[0], global_step=iter_id)
 
-        if (epoch * len(dataloader)/opt.batchSize + i) % 100 == 0:
+        if (epoch * len(dataloader)/opt.batch_size + i) % 1000 == 0:
             save_images(real_X.asnumpy().transpose(0, 2, 3, 1), '{0}/real_X_samples.png'.format(opt.experiment))
             save_images(real_Y.asnumpy().transpose(0, 2, 3, 1), '{0}/real_X_samples.png'.format(opt.experiment))
 
@@ -164,7 +172,7 @@ def get_trainers(opt, **networks):
     net_G = networks['net_G']
     net_F = networks['net_F']
     net_DY = networks['net_DY']
-    net_DX= networks['net_DX']
+    net_DX = networks['net_DX']
 
     trainer_G = Trainer(net_G.collect_params(), optimizer='adam',
                         optimizer_params={'learning_rate': opt.lrG, 'beta1': opt.beta1, 'beta2': 0.999})
@@ -188,21 +196,22 @@ def get_loss_functions(opt):
 
 def optimize_parameters(net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, real_X, real_Y, opt, ctx):
     """Calculate losses, gradients, and update network weights; called in every training iteration"""
-    # CycleGAN one pass forward
-    fake_Y, rec_X, fake_X, rec_Y = forward(net_G, net_F, real_X, real_Y)   # compute fake images and reconstruction images.
-
-    # G and F
-    loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F = backward_Gs(opt, net_G, net_F, net_DY, net_DX,
-                                                                                              loss_GAN, loss_CC, loss_Id,
-                                                                                              ctx, real_X, real_Y, fake_Y, fake_X, rec_X, rec_Y)           # calculate gradients for G and F
+    with autograd.record():
+        # CycleGAN one pass forward
+        fake_Y, rec_X, fake_X, rec_Y = forward(net_G, net_F, real_X, real_Y)   # compute fake images and reconstruction images.
+        # G and F
+        loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F = backward_Gs(opt, net_G, net_F, net_DY, net_DX,
+                                                                                                  loss_GAN, loss_CC, loss_Id,
+                                                                                                  ctx, real_X, real_Y, fake_Y, fake_X, rec_X, rec_Y)           # calculate gradients for G and F
     trainer_G.step(1)       # update G's weights
     trainer_F.step(1)       # update F's weights
 
-    # D_Y and D_X
-    loss_DY = backward_DY(opt, ctx, net_DY, real_Y, fake_Y)           # calculate gradients for net_DY
-    loss_DX = backward_DX(opt, ctx, net_DY, real_Y, fake_Y)           # calculate graidents for net_DX
-    trainer_DY.step(1)      # update net_DY's weights
-    trainer_DX.step(1)      # update net_DX's weights
+    with autograd.record():
+        # D_Y and D_X
+        loss_DY = backward_DY(opt, ctx, net_DY, loss_GAN, real_Y, fake_Y)           # calculate gradients for net_DY
+        loss_DX = backward_DX(opt, ctx, net_DY, loss_GAN, real_Y, fake_Y)           # calculate graidents for net_DX
+    trainer_DY.step(1, ignore_stale_grad=True)      # update net_DY's weights
+    trainer_DX.step(1, ignore_stale_grad=True)      # update net_DX's weights
 
     return loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F, loss_DY, loss_DX
 
@@ -214,8 +223,9 @@ def forward(net_G, net_F, real_X, real_Y):
     fake_Y = net_G(real_X)        # G(X)
     rec_X = net_F(fake_Y)         # F(G(X)) ~ X
 
-    fake_X = net_F(real_Y)  # G_B(B)
-    rec_Y = net_G(fake_X)   # G_A(G_B(B))
+    fake_X = net_F(real_Y)        # F(Y)
+    rec_Y = net_G(fake_X)         # G(F(Y)) ~ Y
+
     return fake_Y, rec_X, fake_X, rec_Y
 
 def backward_Gs(opt, net_G, net_F, net_DY, net_DX, loss_GAN, loss_CC, loss_Id, ctx, real_X, real_Y, fake_Y, fake_X, rec_X, rec_Y):
@@ -225,58 +235,63 @@ def backward_Gs(opt, net_G, net_F, net_DY, net_DX, loss_GAN, loss_CC, loss_Id, c
         3. Cycle Consistent loss
     """
 
-    with autograd.record():
-        #######################
-        # Identity loss
-        #   identity means that:
-        #       1. G should modify X, but not modify Y. That means G(Y) is nearly same to Y.
-        #       2. F should modify Y, but not modify X. That means F(X) is nearly same to X.
-        #######################
-        loss_idt_G = 0.
-        loss_idt_F = 0.
-        if opt.lambda_identity > 0:
-            # G should be identity if real_Y is fed: ||G(Y) - Y||
-            idt_Y = net_G(real_Y)
-            loss_idt_G = loss_Id(idt_Y, real_Y) * opt.lambda_B * opt.lambda_identity
-            # F should be identity if real_X is fed: ||F(X) - X||
-            idt_X = net_F(real_X)
-            loss_idt_F = loss_Id(idt_X, real_X) * opt.lambda_A * opt.lambda_identity
+    #######################
+    # Identity loss
+    #   identity means that:
+    #       1. G should modify X, but not modify Y. That means G(Y) is nearly same to Y.
+    #       2. F should modify Y, but not modify X. That means F(X) is nearly same to X.
+    #######################
+    loss_idt_G = 0.
+    loss_idt_F = 0.
+    if opt.lambda_identity > 0:
+        # G should be identity if real_Y is fed: ||G(Y) - Y||
+        idt_Y = net_G(real_Y)
+        loss_idt_G = loss_Id(idt_Y, real_Y) * opt.lambda_B * opt.lambda_identity
+        # F should be identity if real_X is fed: ||F(X) - X||
+        idt_X = net_F(real_X)
+        loss_idt_F = loss_Id(idt_X, real_X) * opt.lambda_A * opt.lambda_identity
 
-        #######################
-        # GAN loss (Generator Perspective: G and F)
-        #   1. DY(fake_Y, real_label)
-        #       For generator G: (real_X -> fake_Y), it would cheat DY, that fake_Y generated by G is real.
-        #   2. DX(fake_X, real_label)
-        #       For generator F: (real_Y -> fake_X), it would cheat DX, that fake_X generated by F is real.
-        #######################
-        real_label = nd.ones((opt.batch_size,), ctx=ctx)
-        loss_G = loss_GAN(net_DY(fake_Y), real_label)
-        loss_F = loss_GAN(net_DX(fake_X), real_label)
+    #######################
+    # GAN loss (Generator Perspective: G and F)
+    #   1. DY(fake_Y, real_label)
+    #       For generator G: (real_X -> fake_Y), it would cheat DY, that fake_Y generated by G is real.
+    #   2. DX(fake_X, real_label)
+    #       For generator F: (real_Y -> fake_X), it would cheat DX, that fake_X generated by F is real.
+    #######################
+    pred_DY = net_DY(fake_Y)
+    real_label = nd.ones(shape=pred_DY.shape, ctx=ctx)
+    loss_G = loss_GAN(pred_DY, real_label)
+    #print("loss_G: {}".format(loss_G))
+    pred_DX = net_DX(fake_X)
+    real_label = nd.ones(shape=pred_DX.shape, ctx=ctx)
+    loss_F = loss_GAN(pred_DX, real_label)
+    #print("loss_F: {}".format(loss_F))
 
-        #######################
-        # Cycle Consistent loss
-        #   1. F(G(X)) ~ X
-        #   2. G(F(Y)) ~ Y
-        #
-        #       F(G(X)) represents reconstruction of X
-        #       G(F(Y)) represents reconstruction of Y
-        #######################
-        # Forward cycle loss || F(G(X)) - X||
-        loss_cycle_G = loss_CC(rec_X, real_X) * opt.lambda_A
-        # Backward cycle loss || G_A(G_B(B)) - B||
-        loss_cycle_F = loss_CC(rec_Y, real_Y) * opt.lambda_B
 
-        # combined loss and calculate gradients
-        loss_Gs = loss_G + loss_F + loss_cycle_G + loss_cycle_F + loss_idt_G + loss_idt_F
-        loss_Gs.backward()
+    #######################
+    # Cycle Consistent loss
+    #   1. F(G(X)) ~ X
+    #   2. G(F(Y)) ~ Y
+    #
+    #       F(G(X)) represents reconstruction of X
+    #       G(F(Y)) represents reconstruction of Y
+    #######################
+    # Forward cycle loss || F(G(X)) - X||
+    loss_cycle_G = loss_CC(rec_X, real_X) * opt.lambda_A
+    # Backward cycle loss || G_A(G_B(B)) - B||
+    loss_cycle_F = loss_CC(rec_Y, real_Y) * opt.lambda_B
+
+    # combined loss and calculate gradients
+    loss_Gs = loss_G + loss_F + loss_cycle_G + loss_cycle_F + loss_idt_G + loss_idt_F
+    loss_Gs.backward()
     return loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F
 
-def backward_DY(opt, ctx, net_DY, real_Y, fake_Y):
-    loss_DY = backward_D_basic(opt, ctx, net_DY, real_Y, fake_Y)
+def backward_DY(opt, ctx, net_DY, loss_GAN, real_Y, fake_Y):
+    loss_DY = backward_D_basic(opt, ctx, net_DY, loss_GAN, real_Y, fake_Y)
     return loss_DY
 
-def backward_DX(opt, ctx, net_DX, real_X, fake_X):
-    loss_DX = backward_D_basic(opt, ctx, net_DX, real_X, fake_X)
+def backward_DX(opt, ctx, net_DX, loss_GAN, real_X, fake_X):
+    loss_DX = backward_D_basic(opt, ctx, net_DX, loss_GAN, real_X, fake_X)
     return loss_DX
 
 def backward_D_basic(opt, ctx, net_D, loss_GAN, real, fake):
@@ -290,18 +305,16 @@ def backward_D_basic(opt, ctx, net_D, loss_GAN, real, fake):
     Return the discriminator loss.
     We also call loss_D.backward() to calculate the gradients.
     """
-    with autograd.record():
-        real_label = nd.ones((opt.batch_size,), ctx=ctx)
-        fake_label = nd.zeros((opt.batch_size,), ctx=ctx)
+    # Real
+    pred_real = net_D(real)
+    real_label = nd.ones(shape=pred_real.shape, ctx=ctx)
+    loss_D_real = loss_GAN(pred_real, real_label)
+    # Fake
+    pred_fake = net_D(fake.detach())
+    fake_label = nd.zeros(shape=pred_fake.shape, ctx=ctx)
+    loss_D_fake = loss_GAN(pred_fake, fake_label)
 
-        # Real
-        pred_real = net_D(real)
-        loss_D_real = loss_GAN(pred_real, real_label)
-        # Fake
-        pred_fake = net_D(fake.detach())
-        loss_D_fake = loss_GAN(pred_fake, fake_label)
-
-        # Combined loss and calculate gradients
-        loss_D = (loss_D_real + loss_D_fake) * 0.5
-        loss_D.backward()
+    # Combined loss and calculate gradients
+    loss_D = (loss_D_real + loss_D_fake) * 0.5
+    loss_D.backward()
     return loss_D
