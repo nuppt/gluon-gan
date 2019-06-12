@@ -10,7 +10,7 @@ from transform import *
 
 
 class UnpairedDataset(gluon.data.Dataset):
-    def __init__(self, opt, transform=None):
+    def __init__(self, opt):
         """Initialize this dataset class.
 
         Initialize:
@@ -27,8 +27,8 @@ class UnpairedDataset(gluon.data.Dataset):
         print("dir_X: {}".format(self.dir_X))
         print("dir_Y: {}".format(self.dir_Y))
 
-        self.X_paths = sorted(self._gen_img_path_list(self.dir_X, opt.max_dataset_size))   # load images from '/path/to/data/trainA'
-        self.Y_paths = sorted(self._gen_img_path_list(self.dir_Y, opt.max_dataset_size))    # load images from '/path/to/data/trainB'
+        self.X_paths = sorted(self._gen_img_path_list(self.dir_X, opt.max_dataset_size))  # load images from '/path/to/data/trainA'
+        self.Y_paths = sorted(self._gen_img_path_list(self.dir_Y, opt.max_dataset_size))  # load images from '/path/to/data/trainB'
         self.X_size = len(self.X_paths)  # get the size of dataset A
         self.Y_size = len(self.Y_paths)  # get the size of dataset B
 
@@ -36,8 +36,8 @@ class UnpairedDataset(gluon.data.Dataset):
         input_nc = self.opt.output_nc if is_Y_2_X else self.opt.input_nc   # get the number of channels of input image
         output_nc = self.opt.input_nc if is_Y_2_X else self.opt.output_nc  # get the number of channels of output image
 
-        self.transformer_X = get_transform(self.opt, grayscale=(input_nc == 1))
-        self.transformer_Y = get_transform(self.opt, grayscale=(output_nc == 1))
+        self.transformer_X = get_augmentation(self.opt, grayscale=(input_nc == 1))
+        self.transformer_Y = get_augmentation(self.opt, grayscale=(output_nc == 1))
         
     def __getitem__(self, index):
         """Return a data point and its meta information

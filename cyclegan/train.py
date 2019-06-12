@@ -37,7 +37,7 @@ class CycleGANTrainer:
         self._define_optimizers()
 
         # define loss functions
-        self._define_loss_functions()
+        self._define_loss_functions(gan_mode='lsgan')
 
         print("Start training ...")
         for epoch in range(self.opt.num_epochs):
@@ -168,13 +168,16 @@ class CycleGANTrainer:
         self.trainer_DX = Trainer(self.net_DX.collect_params(), optimizer='adam',
                                   optimizer_params={'learning_rate': self.opt.lrD, 'beta1': self.opt.beta1, 'beta2': 0.999})
 
-    def _define_loss_functions(self):
+    def _define_loss_functions(self, gan_mode):
         """Define loss functions.
             1. loss_GAN
             2. loss_Cycle_Consistent
             3. loss_Identity
         """
-        self.loss_GAN = loss.SigmoidBinaryCrossEntropyLoss()
+        if gan_mode == 'lsgan':
+            self.loss_GAN = loss.L2Loss()
+        elif gan_mode == 'vanilla':
+            self.loss_GAN = loss.SigmoidBinaryCrossEntropyLoss()
         self.loss_CC = loss.L1Loss()
         self.loss_Id = loss.L1Loss()
 

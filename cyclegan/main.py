@@ -3,7 +3,6 @@ from dataset import UnpairedDataset
 from model import *
 from train import CycleGANTrainer
 
-from mxnet.gluon.data.vision import transforms
 from mxnet.gluon.data import DataLoader
 
 
@@ -14,8 +13,8 @@ if __name__ == "__main__":
 
     assert dataset
     data_loader = DataLoader(dataset, batch_size=opt.batch_size,
-                            shuffle=True, last_batch='discard',
-                            pin_memory=True, num_workers=opt.workers)
+                             shuffle=True, last_batch='discard',
+                             pin_memory=True, num_workers=opt.workers)
 
     print("Data ready...")
 

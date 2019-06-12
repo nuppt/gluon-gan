@@ -13,6 +13,10 @@ def parse_args():
     parser.add_argument('--direction', type=str, default='X2Y', help='X2Y or Y2X')
     parser.add_argument('--phase', type=str, default='train', help='train, val, test, etc')
     parser.add_argument('--manualSeed', type=int, default=10, help='seed number for result reproduction')
+    parser.add_argument('--preprocess', type=str, default='resize_and_crop',
+                        help='scaling and cropping of images at load time [resize_and_crop | crop | scale_width | scale_width_and_crop | none]')
+    parser.add_argument('--no_flip', action='store_true',
+                        help='if specified, do not flip the images for data augmentation')
     parser.add_argument('--workers', type=int, help='number of data loading workers', default=2)
     parser.add_argument('--batch_size', type=int, default=1, help='input batch size')
     parser.add_argument('--image_size', type=int, default=288, help='scale images to this size')
