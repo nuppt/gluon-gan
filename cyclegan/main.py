@@ -1,7 +1,7 @@
 from cmd_opt import parse_args
 from dataset import UnpairedDataset
 from model import *
-from train import train
+from train import CycleGANTrainer
 
 from mxnet.gluon.data.vision import transforms
 from mxnet.gluon.data import DataLoader
@@ -34,4 +34,5 @@ if __name__ == "__main__":
     net_D_X = CycleGAN_D(opt.input_nc, opt.ndf, opt.n_layers_D, opt.norm)
 
     print("Network ready...")
-    train(net_G_X2Y, net_G_Y2X, net_D_Y, net_D_X, data_loader, opt)
+    trainer = CycleGANTrainer(opt, data_loader, net_G=net_G_X2Y, net_F=net_G_Y2X, net_DY=net_D_Y, net_DX=net_D_X)
+    trainer.train()

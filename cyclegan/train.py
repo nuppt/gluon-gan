@@ -11,310 +11,294 @@ from viz import save_images
 from utils import *
 
 
-def init_networks(net_G, net_F, net_DY, net_DX, opt, ctx):
-    """Initialize CycleGAN G(s) and D(s)
+class CycleGANTrainer:
+    def __init__(self, opt, dataloader, **networks):
+        self.opt = opt
+        self.ctx = try_gpu()
+        self.data_loader = dataloader
 
-    Ensure:
-        1. network parameters
-            1.1 General init
-                [For example]
-                net_G.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
-            1.2 Fine-tune some specific layers
-                [For example]
-                in '_init_layers' function
+        self.net_G = networks['net_G']
+        self.net_F = networks['net_F']
+        self.net_DY = networks['net_DY']
+        self.net_DX = networks['net_DX']
 
-        2. network locations   ctx=(cpu, gpu(i))
+        self.sw = SummaryWriter(logdir='./logs', flush_secs=5)
 
-    :return: CycleGAN networks with initialization
-    """
-    def _init_layers(layer, opt, ctx):
-        """Custom weights initialization on single layer"""
-        classname = layer.__class__.__name__
-        if hasattr(layer, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
-            if opt.init_type == 'normal':
-                layer.weight.set_data(mx.ndarray.random.normal(0, opt.init_gain, shape=layer.weight.data().shape))
-            elif opt.init_type == 'xavier':
-                layer.initialize(init.Xavier('gaussian', factor_type='avg', magnitude=opt.init_gain), force_reinit=True, ctx=ctx)
-            elif opt.init_type == 'orthogonal':
-                layer.initialize(init.Orthogonal(scale=opt.init_gain), force_reinit=True, ctx=ctx)
-            else:
-                raise NotImplementedError('initialization method [%s] is not implemented' % opt.init_type)
+    def train(self):
+        """Entry of Training process."""
+        print("Random Seed: ", self.opt.manualSeed)
+        random.seed(self.opt.manualSeed)
+        mx.random.seed(self.opt.manualSeed)
 
-            if hasattr(layer, 'bias') and layer.bias is not None:
-                layer.initialize(init.Constant(0.), force_reinit=True, ctx=ctx)
-                # layer.bias.set_data(mx.ndarray.zeros(shape=layer.bias.data().shape))
+        # initialize netGs, netDs
+        self._init_networks()
 
-        elif classname.find('BatchNorm') != -1:
-            layer.gamma.set_data(mx.ndarray.random.normal(1.0, opt.init_gain, shape=layer.gamma.data().shape))
-            layer.beta.set_data(mx.ndarray.zeros(shape=layer.beta.data().shape))
+        # optimizers
+        self._define_optimizers()
 
-    net_G.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
-    net_G.apply(lambda x: _init_layers(x, opt, ctx))
+        # define loss functions
+        self._define_loss_functions()
 
-    net_F.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
-    net_F.apply(lambda x: _init_layers(x, opt, ctx))
+        print("Start training ...")
+        for epoch in range(self.opt.num_epochs):
+            self._train_step(epoch)
 
-    net_DY.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
-    net_DY.apply(lambda x: _init_layers(x, opt, ctx))
+            # do checkpoints
+            self.net_G.save_parameters('{0}/netG_epoch_{1}.param'.format(self.opt.experiment, epoch))
+            self.net_F.save_parameters('{0}/netF_epoch_{1}.param'.format(self.opt.experiment, epoch))
+            self.net_DY.save_parameters('{0}/netDY_epoch_{1}.param'.format(self.opt.experiment, epoch))
+            self.net_DX.save_parameters('{0}/netDX_epoch_{1}.param'.format(self.opt.experiment, epoch))
 
-    net_DX.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
-    net_DX.apply(lambda x: _init_layers(x, opt, ctx))
+    def _train_step(self, epoch):
+        for i, (real_X, real_Y) in enumerate(self.data_loader):
+            start_time = time.time()
+            iter_id = epoch * len(self.data_loader) // self.opt.batch_size + i
+            self.real_X = real_X.as_in_context(self.ctx)
+            self.real_Y = real_Y.as_in_context(self.ctx)
 
-    # load checkpoint if needed
-    if opt.netG_param != '':
-        net_G.load_parameters(opt.netG_param)
-    #print(net_G)
+            self._optimize_parameters()  # One step of updating parameters
 
-    if opt.netF_param != '':
-        net_F.load_parameters(opt.netF_param)
-    #print(net_F)
+            print('[{:d}/{:d}][{:d}/{:d}] loss_Gs: {:f}, loss_G: {:.3f}, loss_F: {:.3f}, loss_cycle_G: {:.3f}, loss_cycle_F: {:.3f}, loss_idt_G: {:.3f}, loss_idt_F: {:.3f}, loss_DY: {:.3f}, loss_DX: {:.3f}    time:[{:f}]'.format(
+                    epoch, self.opt.num_epochs, i, len(self.data_loader),
+                    self.loss_Gs.asnumpy()[0], self.loss_G.asnumpy()[0], self.loss_F.asnumpy()[0],
+                    self.loss_cycle_G.asnumpy()[0], self.loss_cycle_F.asnumpy()[0], self.loss_idt_G.asnumpy()[0],
+                    self.loss_idt_F.asnumpy()[0], self.loss_DY.asnumpy()[0], self.loss_DX.asnumpy()[0],
+                    time.time() - start_time))
 
-    if opt.netDY_param != '':
-        net_DY.load_parameters(opt.netDY_param)
-    #print(net_DY)
+            self.sw.add_scalar(tag='loss_DY', value=-self.loss_DY.asnumpy()[0], global_step=iter_id)
+            self.sw.add_scalar(tag='loss_DX', value=-self.loss_DX.asnumpy()[0], global_step=iter_id)
 
-    if opt.netDX_param != '':
-        net_DX.load_parameters(opt.netDX_param)
-    #print(net_DX)
+            if (epoch * len(self.data_loader) / self.opt.batch_size + i) % 1000 == 0:
+                save_images(real_X.asnumpy().transpose(0, 2, 3, 1), '{0}/real_X_samples.png'.format(self.opt.experiment))
+                save_images(real_Y.asnumpy().transpose(0, 2, 3, 1), '{0}/real_X_samples.png'.format(self.opt.experiment))
+                save_images(self.fake_Y.asnumpy().transpose(0, 2, 3, 1),
+                            '{0}/fake_Y_samples_{1}.png'.format(self.opt.experiment, iter_id))
+                save_images(self.fake_X.asnumpy().transpose(0, 2, 3, 1),
+                            '{0}/fake_X_samples_{1}.png'.format(self.opt.experiment, iter_id))
 
-    # Domain X -> Y: A pass forward to initialize net_G, net_DY (because of defered initialization)
-    init_x = nd.array(np.ones(shape=(opt.batch_size, opt.input_nc, opt.crop_size, opt.crop_size)), ctx=ctx)
-    init_x = net_G(init_x)
-    _ = net_DY(init_x)
+    def _init_networks(self):
+        """Initialize CycleGAN G(s) and D(s)
 
-    # Domain Y -> X: A pass forward to initialize net_F, net_DX (because of defered initialization)
-    init_x = nd.array(np.ones(shape=(opt.batch_size, opt.output_nc, opt.crop_size, opt.crop_size)), ctx=ctx)
-    init_x = net_F(init_x)
-    _ = net_DX(init_x)
+            Ensure:
+                1. network parameters
+                    1.1 General init
+                        [For example]
+                        net_G.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
+                    1.2 Fine-tune some specific layers
+                        [For example]
+                        in '_init_layers' function
 
-    return net_G, net_F, net_DY, net_DX
+                2. network locations   ctx=(cpu, gpu(i))
 
+            :return: CycleGAN networks with initialization
+            """
 
-def train(net_G, net_F, net_DY, net_DX, dataloader, opt):
-    '''
-    Entry of Training process
-    :return:
-    '''
-    sw = SummaryWriter(logdir='./logs', flush_secs=5)
+        def _init_layers(layer, opt, ctx):
+            """Custom weights initialization on single layer"""
+            classname = layer.__class__.__name__
+            if hasattr(layer, 'weight') and (classname.find('Conv') != -1 or classname.find('Linear') != -1):
+                if opt.init_type == 'normal':
+                    layer.weight.set_data(mx.ndarray.random.normal(0, opt.init_gain, shape=layer.weight.data().shape))
+                elif opt.init_type == 'xavier':
+                    layer.initialize(init.Xavier('gaussian', factor_type='avg', magnitude=opt.init_gain),
+                                     force_reinit=True, ctx=ctx)
+                elif opt.init_type == 'orthogonal':
+                    layer.initialize(init.Orthogonal(scale=opt.init_gain), force_reinit=True, ctx=ctx)
+                else:
+                    raise NotImplementedError('initialization method [%s] is not implemented' % opt.init_type)
 
-    print("Random Seed: ", opt.manualSeed)
-    random.seed(opt.manualSeed)
-    mx.random.seed(opt.manualSeed)
+                if hasattr(layer, 'bias') and layer.bias is not None:
+                    layer.initialize(init.Constant(0.), force_reinit=True, ctx=ctx)
+                    # layer.bias.set_data(mx.ndarray.zeros(shape=layer.bias.data().shape))
 
-    ctx = try_gpu()
-    print("ctx: ", ctx)
+            elif classname.find('BatchNorm') != -1:
+                layer.gamma.set_data(mx.ndarray.random.normal(1.0, opt.init_gain, shape=layer.gamma.data().shape))
+                layer.beta.set_data(mx.ndarray.zeros(shape=layer.beta.data().shape))
 
-    # initialize netG, netD
-    net_G, net_F, net_DY, net_DX = init_networks(net_G, net_F, net_DY, net_DX, opt, ctx)
+        self.net_G.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=self.ctx)
+        self.net_G.apply(lambda x: _init_layers(x, self.opt, self.ctx))
 
-    # optimizer/trainer settings
-    trainer_G, trainer_F, trainer_DY, trainer_DX = get_trainers(opt, net_G=net_G, net_F=net_F, net_DY=net_DY, net_DX=net_DX)
+        self.net_F.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=self.ctx)
+        self.net_F.apply(lambda x: _init_layers(x, self.opt, self.ctx))
 
-    # define loss functions
-    loss_GAN, loss_CC, loss_Id = get_loss_functions(opt)
+        self.net_DY.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=self.ctx)
+        self.net_DY.apply(lambda x: _init_layers(x, self.opt, self.ctx))
 
-    print("Start training ...")
-    for epoch in range(opt.num_epochs):
-        train_step(dataloader, net_G, net_F, net_DY, net_DX,
-                   trainer_G, trainer_F, trainer_DY, trainer_DX,
-                   loss_GAN, loss_CC, loss_Id, opt, ctx, sw, epoch)
+        self.net_DX.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=self.ctx)
+        self.net_DX.apply(lambda x: _init_layers(x, self.opt, self.ctx))
 
-        # do checkpointing
-        net_G.save_parameters('{0}/netG_epoch_{1}.param'.format(opt.experiment, epoch))
-        net_F.save_parameters('{0}/netF_epoch_{1}.param'.format(opt.experiment, epoch))
-        net_DY.save_parameters('{0}/netDY_epoch_{1}.param'.format(opt.experiment, epoch))
-        net_DX.save_parameters('{0}/netDX_epoch_{1}.param'.format(opt.experiment, epoch))
+        # load checkpoint if needed
+        if self.opt.netG_param != '':
+            self.net_G.load_parameters(self.opt.netG_param)
+        # print(net_G)
 
+        if self.opt.netF_param != '':
+            self.net_F.load_parameters(self.opt.netF_param)
+        # print(net_F)
 
-def train_step(dataloader, net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, opt, ctx, sw, epoch):
-    for i, (real_X, real_Y) in enumerate(dataloader):
-        iter_id = epoch * len(dataloader) // opt.batch_size + i
+        if self.opt.netDY_param != '':
+            self.net_DY.load_parameters(self.opt.netDY_param)
+        # print(net_DY)
 
-        start_time = time.time()
-        real_X = real_X.as_in_context(ctx)
-        real_Y = real_Y.as_in_context(ctx)
+        if self.opt.netDX_param != '':
+            self.net_DX.load_parameters(self.opt.netDX_param)
+        # print(net_DX)
 
-        loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F, loss_DY, loss_DX = \
-            optimize_parameters(net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX,
-                                loss_GAN, loss_CC, loss_Id, real_X, real_Y, opt, ctx)
+        # Domain X -> Y: A pass forward to initialize net_G, net_DY (because of defered initialization)
+        init_x = nd.array(np.ones(shape=(self.opt.batch_size, self.opt.input_nc, self.opt.crop_size, self.opt.crop_size)),
+                          ctx=self.ctx)
+        init_x = self.net_G(init_x)
+        _ = self.net_DY(init_x)
+
+        # Domain Y -> X: A pass forward to initialize net_F, net_DX (because of defered initialization)
+        init_x = nd.array(np.ones(shape=(self.opt.batch_size, self.opt.output_nc, self.opt.crop_size, self.opt.crop_size)),
+                          ctx=self.ctx)
+        init_x = self.net_F(init_x)
+        _ = self.net_DX(init_x)
+
+    def _define_optimizers(self):
+        """Define trainers for networks according to opt."""
+
+        self.trainer_G = Trainer(self.net_G.collect_params(), optimizer='adam',
+                                 optimizer_params={'learning_rate': self.opt.lrG, 'beta1': self.opt.beta1, 'beta2': 0.999})
+        self.trainer_F = Trainer(self.net_F.collect_params(), optimizer='adam',
+                                 optimizer_params={'learning_rate': self.opt.lrG, 'beta1': self.opt.beta1, 'beta2': 0.999})
+        self.trainer_DY = Trainer(self.net_DY.collect_params(), optimizer='adam',
+                                  optimizer_params={'learning_rate': self.opt.lrD, 'beta1': self.opt.beta1, 'beta2': 0.999})
+        self.trainer_DX = Trainer(self.net_DX.collect_params(), optimizer='adam',
+                                  optimizer_params={'learning_rate': self.opt.lrD, 'beta1': self.opt.beta1, 'beta2': 0.999})
+
+    def _define_loss_functions(self):
+        """Define loss functions.
+            1. loss_GAN
+            2. loss_Cycle_Consistent
+            3. loss_Identity
+        """
+        self.loss_GAN = loss.SigmoidBinaryCrossEntropyLoss()
+        self.loss_CC = loss.L1Loss()
+        self.loss_Id = loss.L1Loss()
+
+    def _optimize_parameters(self):
+        """Calculate losses, gradients, and update network weights; called in every training iteration
+
+            Step 1. Forward pass
+                Calculate G(x), F(G(x)), F(y), G(F(y)) and losses for Gs (G & F)
+
+            Step 2. Backward pass of Gs
+                Calculate gradients for Gs and update parameters of Gs
+
+            Step 3. Backward pass of DY and DX
+                Calculate gradients for Ds and update parameters of Ds
+        """
+        with autograd.record():
+            # Step 1. Forward pass
+            #   compute fake images and reconstruction images
+            self._forward_model()
+            self._forward_G_losses()
+            #   calculate gradients for G and F
+            self.loss_Gs.backward()
+        # Update parameters of generators (G and F)
+        self.trainer_G.step(1)
+        self.trainer_F.step(1)
+
+        with autograd.record():
+            # D_Y and D_X
+            self._forward_D_losses()
+            self.loss_DY.backward()
+            self.loss_DX.backward()
+        self.trainer_DY.step(1, ignore_stale_grad=True)  # update net_DY's weights
+        self.trainer_DX.step(1, ignore_stale_grad=True)  # update net_DX's weights
+
+    def _forward_model(self):
+        """Run forward pass.
+            1. X -> Y -> X
+            2. Y -> X -> Y
+        """
+        self.fake_Y = self.net_G(self.real_X)  # G(X)
+        self.rec_X = self.net_F(self.fake_Y)  # F(G(X)) ~ X
+
+        self.fake_X = self.net_F(self.real_Y)  # F(Y)
+        self.rec_Y = self.net_G(self.fake_X)  # G(F(Y)) ~ Y
+
+    def _forward_G_losses(self):
+        """Calculate the loss for generators G and F
+            1. Identity loss
+            2. GAN loss
+            3. Cycle Consistent loss
+        """
+
+        #######################
+        # Identity loss
+        #   identity means that:
+        #       1. G should modify X, but not modify Y. That means G(Y) is nearly same to Y.
+        #       2. F should modify Y, but not modify X. That means F(X) is nearly same to X.
+        #######################
+        self.loss_idt_G = 0.
+        self.loss_idt_F = 0.
+        if self.opt.lambda_identity > 0:
+            # G should be identity if real_Y is fed: ||G(Y) - Y||
+            idt_Y = self.net_G(self.real_Y)
+            self.loss_idt_G = self.loss_Id(idt_Y, self.real_Y) * self.opt.lambda_B * self.opt.lambda_identity
+            # F should be identity if real_X is fed: ||F(X) - X||
+            idt_X = self.net_F(self.real_X)
+            self.loss_idt_F = self.loss_Id(idt_X, self.real_X) * self.opt.lambda_A * self.opt.lambda_identity
+
+        #######################
+        # GAN loss (Generator Perspective: G and F)
+        #   1. DY(fake_Y, real_label)
+        #       For generator G: (real_X -> fake_Y), it would cheat DY, that fake_Y generated by G is real.
+        #   2. DX(fake_X, real_label)
+        #       For generator F: (real_Y -> fake_X), it would cheat DX, that fake_X generated by F is real.
+        #######################
+        pred_DY = self.net_DY(self.fake_Y)
+        real_label = nd.ones(shape=pred_DY.shape, ctx=self.ctx)
+        self.loss_G = self.loss_GAN(pred_DY, real_label)
+        # print("loss_G: {}".format(loss_G))
+        pred_DX = self.net_DX(self.fake_X)
+        real_label = nd.ones(shape=pred_DX.shape, ctx=self.ctx)
+        self.loss_F = self.loss_GAN(pred_DX, real_label)
+        # print("loss_F: {}".format(loss_F))
+
+        #######################
+        # Cycle Consistent loss
+        #   1. F(G(X)) ~ X
+        #   2. G(F(Y)) ~ Y
         #
-        # print('[{:d}/{:d}][{:d}/{:d}] loss_Gs: {:}, loss_G: {:.3f}, loss_F: {:.3f}, loss_cycle_G: {:.3f}, loss_cycle_F: {:.3f}, loss_idt_G: {:.3f}, loss_idt_F: {:.3f}, loss_DY: {:3.f}, loss_DX: {:3.f}    time:[{:f}]'.format(epoch, opt.num_epochs, i, len(dataloader),
-        #       loss_Gs.asnumpy()[0], loss_G.asnumpy()[0], loss_F.asnumpy()[0], loss_cycle_G.asnumpy()[0], loss_cycle_F.asnumpy()[0], loss_idt_G.asnumpy()[0], loss_idt_F.asnumpy()[0], loss_DY.asnumpy()[0], loss_DX.asnumpy()[0],
-        #       time.time() - start_time))
+        #       F(G(X)) represents reconstruction of X
+        #       G(F(Y)) represents reconstruction of Y
+        #######################
+        # Forward cycle loss || F(G(X)) - X||
+        self.loss_cycle_G = self.loss_CC(self.rec_X, self.real_X) * self.opt.lambda_A
+        # Backward cycle loss || G_A(G_B(B)) - B||
+        self.loss_cycle_F = self.loss_CC(self.rec_Y, self.real_Y) * self.opt.lambda_B
 
-        print(
-            '[{:d}/{:d}][{:d}/{:d}] loss_Gs: {:f}, loss_G: {:.3f}, loss_F: {:.3f}, loss_cycle_G: {:.3f}, loss_cycle_F: {:.3f}, loss_idt_G: {:.3f}, loss_idt_F: {:.3f}, loss_DY: {:.3f}, loss_DX: {:.3f}    time:[{:f}]'.format(
-                epoch, opt.num_epochs, i, len(dataloader),
-                loss_Gs.asnumpy()[0], loss_G.asnumpy()[0], loss_F.asnumpy()[0], loss_cycle_G.asnumpy()[0],
-                loss_cycle_F.asnumpy()[0], loss_idt_G.asnumpy()[0], loss_idt_F.asnumpy()[0], loss_DY.asnumpy()[0],
-                loss_DX.asnumpy()[0],
-                time.time() - start_time))
+        # combined loss and calculate gradients
+        self.loss_Gs = self.loss_G + self.loss_F + self.loss_cycle_G + self.loss_cycle_F + self.loss_idt_G + self.loss_idt_F
 
-        sw.add_scalar(tag='loss_DY', value=-loss_DY.asnumpy()[0], global_step=iter_id)
-        sw.add_scalar(tag='loss_DX', value=-loss_DX.asnumpy()[0], global_step=iter_id)
+    def _forward_D_losses(self):
+        """Calculate GAN loss for Ds"""
+        self.loss_DY = self._forward_D_base(self.net_DY, self.real_Y, self.fake_Y)
+        self.loss_DX = self._forward_D_base(self.net_DX, self.real_X, self.fake_X)
 
-        if (epoch * len(dataloader)/opt.batch_size + i) % 1000 == 0:
-            save_images(real_X.asnumpy().transpose(0, 2, 3, 1), '{0}/real_X_samples.png'.format(opt.experiment))
-            save_images(real_Y.asnumpy().transpose(0, 2, 3, 1), '{0}/real_X_samples.png'.format(opt.experiment))
+    def _forward_D_base(self, net_D, real, fake):
+        """Calculate GAN loss
 
-            fake_Y = net_G(real_X.as_in_context(ctx))
-            save_images(fake_Y.asnumpy().transpose(0, 2, 3, 1),
-                        '{0}/fake_Y_samples_{1}.png'.format(opt.experiment, iter_id))
+        Parameters:
+            net_D (network)     -- the discriminator D
+            real (tensor array) -- real images
+            fake (tensor array) -- images generated by a generator
 
-            fake_X = net_F(real_Y.as_in_context(ctx))
-            save_images(fake_X.asnumpy().transpose(0, 2, 3, 1),
-                        '{0}/fake_X_samples_{1}.png'.format(opt.experiment, iter_id))
+        Return the discriminator loss.
+        """
+        # Real
+        pred_real = net_D(real)
+        real_label = nd.ones(shape=pred_real.shape, ctx=self.ctx)
+        loss_D_real = self.loss_GAN(pred_real, real_label)
+        # Fake
+        pred_fake = net_D(fake.detach())
+        fake_label = nd.zeros(shape=pred_fake.shape, ctx=self.ctx)
+        loss_D_fake = self.loss_GAN(pred_fake, fake_label)
 
-
-def get_trainers(opt, **networks):
-    """Define trainers for networks according to opt."""
-
-    net_G = networks['net_G']
-    net_F = networks['net_F']
-    net_DY = networks['net_DY']
-    net_DX = networks['net_DX']
-
-    trainer_G = Trainer(net_G.collect_params(), optimizer='adam',
-                        optimizer_params={'learning_rate': opt.lrG, 'beta1': opt.beta1, 'beta2': 0.999})
-    trainer_F = Trainer(net_F.collect_params(), optimizer='adam',
-                        optimizer_params={'learning_rate': opt.lrG, 'beta1': opt.beta1, 'beta2': 0.999})
-    trainer_DY = Trainer(net_DY.collect_params(), optimizer='adam',
-                         optimizer_params={'learning_rate': opt.lrD, 'beta1': opt.beta1, 'beta2': 0.999})
-    trainer_DX = Trainer(net_DX.collect_params(), optimizer='adam',
-                         optimizer_params={'learning_rate': opt.lrD, 'beta1': opt.beta1, 'beta2': 0.999})
-
-    return trainer_G, trainer_F, trainer_DY, trainer_DX
-
-def get_loss_functions(opt):
-    """Define loss functions."""
-    loss_GAN = loss.SigmoidBinaryCrossEntropyLoss()
-    loss_Cycle_Consistent = loss.L1Loss()
-    loss_Identity = loss.L1Loss()
-
-    return loss_GAN, loss_Cycle_Consistent, loss_Identity
-
-
-def optimize_parameters(net_G, net_F, net_DY, net_DX, trainer_G, trainer_F, trainer_DY, trainer_DX, loss_GAN, loss_CC, loss_Id, real_X, real_Y, opt, ctx):
-    """Calculate losses, gradients, and update network weights; called in every training iteration"""
-    with autograd.record():
-        # CycleGAN one pass forward
-        fake_Y, rec_X, fake_X, rec_Y = forward(net_G, net_F, real_X, real_Y)   # compute fake images and reconstruction images.
-        # G and F
-        loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F = backward_Gs(opt, net_G, net_F, net_DY, net_DX,
-                                                                                                  loss_GAN, loss_CC, loss_Id,
-                                                                                                  ctx, real_X, real_Y, fake_Y, fake_X, rec_X, rec_Y)           # calculate gradients for G and F
-    trainer_G.step(1)       # update G's weights
-    trainer_F.step(1)       # update F's weights
-
-    with autograd.record():
-        # D_Y and D_X
-        loss_DY = backward_DY(opt, ctx, net_DY, loss_GAN, real_Y, fake_Y)           # calculate gradients for net_DY
-        loss_DX = backward_DX(opt, ctx, net_DY, loss_GAN, real_Y, fake_Y)           # calculate graidents for net_DX
-    trainer_DY.step(1, ignore_stale_grad=True)      # update net_DY's weights
-    trainer_DX.step(1, ignore_stale_grad=True)      # update net_DX's weights
-
-    return loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F, loss_DY, loss_DX
-
-def forward(net_G, net_F, real_X, real_Y):
-    """Run forward pass.
-        1. X -> Y -> X
-        2. Y -> X -> Y
-    """
-    fake_Y = net_G(real_X)        # G(X)
-    rec_X = net_F(fake_Y)         # F(G(X)) ~ X
-
-    fake_X = net_F(real_Y)        # F(Y)
-    rec_Y = net_G(fake_X)         # G(F(Y)) ~ Y
-
-    return fake_Y, rec_X, fake_X, rec_Y
-
-def backward_Gs(opt, net_G, net_F, net_DY, net_DX, loss_GAN, loss_CC, loss_Id, ctx, real_X, real_Y, fake_Y, fake_X, rec_X, rec_Y):
-    """Calculate the loss for generators G and F
-        1. Identity loss
-        2. GAN loss
-        3. Cycle Consistent loss
-    """
-
-    #######################
-    # Identity loss
-    #   identity means that:
-    #       1. G should modify X, but not modify Y. That means G(Y) is nearly same to Y.
-    #       2. F should modify Y, but not modify X. That means F(X) is nearly same to X.
-    #######################
-    loss_idt_G = 0.
-    loss_idt_F = 0.
-    if opt.lambda_identity > 0:
-        # G should be identity if real_Y is fed: ||G(Y) - Y||
-        idt_Y = net_G(real_Y)
-        loss_idt_G = loss_Id(idt_Y, real_Y) * opt.lambda_B * opt.lambda_identity
-        # F should be identity if real_X is fed: ||F(X) - X||
-        idt_X = net_F(real_X)
-        loss_idt_F = loss_Id(idt_X, real_X) * opt.lambda_A * opt.lambda_identity
-
-    #######################
-    # GAN loss (Generator Perspective: G and F)
-    #   1. DY(fake_Y, real_label)
-    #       For generator G: (real_X -> fake_Y), it would cheat DY, that fake_Y generated by G is real.
-    #   2. DX(fake_X, real_label)
-    #       For generator F: (real_Y -> fake_X), it would cheat DX, that fake_X generated by F is real.
-    #######################
-    pred_DY = net_DY(fake_Y)
-    real_label = nd.ones(shape=pred_DY.shape, ctx=ctx)
-    loss_G = loss_GAN(pred_DY, real_label)
-    #print("loss_G: {}".format(loss_G))
-    pred_DX = net_DX(fake_X)
-    real_label = nd.ones(shape=pred_DX.shape, ctx=ctx)
-    loss_F = loss_GAN(pred_DX, real_label)
-    #print("loss_F: {}".format(loss_F))
-
-
-    #######################
-    # Cycle Consistent loss
-    #   1. F(G(X)) ~ X
-    #   2. G(F(Y)) ~ Y
-    #
-    #       F(G(X)) represents reconstruction of X
-    #       G(F(Y)) represents reconstruction of Y
-    #######################
-    # Forward cycle loss || F(G(X)) - X||
-    loss_cycle_G = loss_CC(rec_X, real_X) * opt.lambda_A
-    # Backward cycle loss || G_A(G_B(B)) - B||
-    loss_cycle_F = loss_CC(rec_Y, real_Y) * opt.lambda_B
-
-    # combined loss and calculate gradients
-    loss_Gs = loss_G + loss_F + loss_cycle_G + loss_cycle_F + loss_idt_G + loss_idt_F
-    loss_Gs.backward()
-    return loss_Gs, loss_G, loss_F, loss_cycle_G, loss_cycle_F, loss_idt_G, loss_idt_F
-
-def backward_DY(opt, ctx, net_DY, loss_GAN, real_Y, fake_Y):
-    loss_DY = backward_D_basic(opt, ctx, net_DY, loss_GAN, real_Y, fake_Y)
-    return loss_DY
-
-def backward_DX(opt, ctx, net_DX, loss_GAN, real_X, fake_X):
-    loss_DX = backward_D_basic(opt, ctx, net_DX, loss_GAN, real_X, fake_X)
-    return loss_DX
-
-def backward_D_basic(opt, ctx, net_D, loss_GAN, real, fake):
-    """Calculate GAN loss and gradient for the discriminator
-
-    Parameters:
-        net_D (network)     -- the discriminator D
-        real (tensor array) -- real images
-        fake (tensor array) -- images generated by a generator
-
-    Return the discriminator loss.
-    We also call loss_D.backward() to calculate the gradients.
-    """
-    # Real
-    pred_real = net_D(real)
-    real_label = nd.ones(shape=pred_real.shape, ctx=ctx)
-    loss_D_real = loss_GAN(pred_real, real_label)
-    # Fake
-    pred_fake = net_D(fake.detach())
-    fake_label = nd.zeros(shape=pred_fake.shape, ctx=ctx)
-    loss_D_fake = loss_GAN(pred_fake, fake_label)
-
-    # Combined loss and calculate gradients
-    loss_D = (loss_D_real + loss_D_fake) * 0.5
-    loss_D.backward()
-    return loss_D
+        # Combined loss and calculate gradients
+        loss_D = (loss_D_real + loss_D_fake) * 0.5
+        return loss_D
