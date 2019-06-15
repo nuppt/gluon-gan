@@ -46,8 +46,6 @@ class UnpairedDataset(gluon.data.Dataset):
         :return:    a dictionary that contains x, y, x_paths and y_paths
             x   (tensor)        -- an image in the input domain
             y   (tensor)        -- its corresponding image in the target domain
-            x_paths (str)       -- image paths
-            y_paths (str)       -- image paths
         """
         # 1. choose image by index
         x_path = self.X_paths[index % self.X_size]
@@ -71,11 +69,10 @@ class UnpairedDataset(gluon.data.Dataset):
         #return {'x': x_img_nd, 'y': y_img_nd, 'x_path': x_path, 'y_path': y_path}
         return x_img_nd, y_img_nd
 
-
     def __len__(self):
         return max(self.X_size, self.Y_size)
 
-    def _gen_img_path_list(self, dir_name:str, max_size:int) -> list:
+    def _gen_img_path_list(self, dir_name: str, max_size: int) -> list:
         """Generate list of full path in <dir_name>
 
         :param dir_name:    image directory
@@ -92,7 +89,7 @@ class UnpairedDataset(gluon.data.Dataset):
                     images.append(path)
         return images[:min(max_size, len(images))]
 
-    def _is_image_file(self, filename:str) -> bool:
+    def _is_image_file(self, filename: str) -> bool:
         """Check type of a file: image or not
 
         :param filename:

@@ -108,7 +108,7 @@ class CycleGANTrainer:
                     raise NotImplementedError('initialization method [%s] is not implemented' % opt.init_type)
 
                 if hasattr(layer, 'bias') and layer.bias is not None:
-                    layer.initialize(init.Constant(0.), force_reinit=True, ctx=ctx)
+                    layer.bias.initialize(init.Constant(0.), force_reinit=True, ctx=ctx)
                     # layer.bias.set_data(mx.ndarray.zeros(shape=layer.bias.data().shape))
 
             elif classname.find('BatchNorm') != -1:
