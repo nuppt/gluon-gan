@@ -14,7 +14,7 @@ from utils import *
 class CycleGANTrainer:
     def __init__(self, opt, dataloader, **networks):
         self.opt = opt
-        self.ctx = try_gpu()
+        self.ctx = try_gpu(self.opt.gpu_id)
         self.data_loader = dataloader
 
         self.net_G = networks['net_G']

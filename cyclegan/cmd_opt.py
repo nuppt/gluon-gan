@@ -54,8 +54,10 @@ def parse_args():
     parser.add_argument('--num_iter_D', type=int, default=1, help='number of D iters per each G iter')
     parser.add_argument('--experiment', default='./experiments', help='Where to store samples and models')
     parser.add_argument('--adam', action='store_true', help='Whether to use adam (default is rmsprop)')
-    parser.add_argument('--cuda'  , action='store_true', help='enables cuda')
-    parser.add_argument('--ngpu'  , type=int, default=1, help='number of GPUs to use')
+    parser.add_argument('--cuda', action='store_true', help='enables cuda')
+    parser.add_argument('--ngpu', type=int, default=1, help='number of GPUs to use')
+    parser.add_argument('--gpu_id', type=int, default=1, help='id of GPU to use, 0 ~ 7 if there are 8 GPUs.')
+
     opt = parser.parse_args()
     print(opt)
     return opt
