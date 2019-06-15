@@ -70,7 +70,7 @@ class CycleGANTrainer:
 
             if (epoch * len(self.data_loader) / self.opt.batch_size + i) % 1000 == 0:
                 save_images(real_X.asnumpy().transpose(0, 2, 3, 1), '{0}/real_X_samples.png'.format(self.opt.experiment))
-                save_images(real_Y.asnumpy().transpose(0, 2, 3, 1), '{0}/real_X_samples.png'.format(self.opt.experiment))
+                save_images(real_Y.asnumpy().transpose(0, 2, 3, 1), '{0}/real_Y_samples.png'.format(self.opt.experiment))
                 save_images(self.fake_Y.asnumpy().transpose(0, 2, 3, 1),
                             '{0}/fake_Y_samples_{1}.png'.format(self.opt.experiment, iter_id))
                 save_images(self.fake_X.asnumpy().transpose(0, 2, 3, 1),
