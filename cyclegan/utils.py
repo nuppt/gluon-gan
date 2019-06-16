@@ -22,3 +22,6 @@ def try_all_gpus():
             ctx_list.append(ctx)
     except:
         pass
+    if not ctx_list:
+        ctx_list = [mx.cpu()]
+    return ctx_list

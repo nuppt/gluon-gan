@@ -72,7 +72,7 @@ class Normalization_Aug(object):
         return transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))(img)
 
 
-def get_augmentation(opt, grayscale):
+def get_augmentation(opt, grayscale=False):
     return transforms.Compose([
         Resize_Aug(opt),
         Crop_Aug(opt, params=None),
