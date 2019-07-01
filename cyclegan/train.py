@@ -263,7 +263,7 @@ class CycleGANTrainer:
         # print("loss_F: {}".format(loss_F))
 
         #######################
-        # Cycle Consistent loss
+        # Cycle Consistent loss (key idea)
         #   1. F(G(X)) ~ X
         #   2. G(F(Y)) ~ Y
         #

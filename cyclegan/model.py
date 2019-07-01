@@ -102,9 +102,9 @@ class CycleGAN_D(nn.Block):
         return x
 
 
-###############################################################################
-#                       Auxiliary Blocks and Functions
-###############################################################################
+################################################
+#  Helper Blocks and Functions
+################################################
 class ResidualBlock(nn.Block):
     """Define the residual block for CycleGAN Generator."""
 

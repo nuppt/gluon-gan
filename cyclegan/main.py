@@ -27,7 +27,6 @@ if __name__ == "__main__":
     # D_X        net_D_X        discriminator on domain X
     net_G_X2Y = CycleGAN_G(opt.input_nc, opt.output_nc, opt.ngf, opt.norm, not opt.no_dropout, opt.netG_arch)
     net_G_Y2X = CycleGAN_G(opt.output_nc, opt.input_nc, opt.ngf, opt.norm, not opt.no_dropout, opt.netG_arch)
-    #print(net_G_X2Y)
 
     net_D_Y = CycleGAN_D(opt.output_nc, opt.ndf, opt.n_layers_D, opt.norm)
     net_D_X = CycleGAN_D(opt.input_nc, opt.ndf, opt.n_layers_D, opt.norm)
