@@ -36,4 +36,5 @@ def main(opt):
 
     # Conditional GAN: G and D
     netG = ConditionalG(opt)
+
     
