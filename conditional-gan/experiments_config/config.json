@@ -1,0 +1,27 @@
+{
+  "db_url": "localhost:27017",
+  "db_name": "gan",
+  "batch_size": 30,
+  "dataset": "voc",
+
+  "network": "vgg16",
+  "nc": 3,
+  "image_size": 300,
+
+  "num_workers": 4,
+  "gpus": "0,3,7",
+  "num_epochs": 240,
+  "resume": "",
+  "start_epoch": 0,
+  "lr": 0.001,
+  "lr_decay": 0.1,
+  "lr_decay_epoch": "160,200",
+  "momentum": 0.9,
+  "wd": 0.0005,
+
+  "save_prefix": "",
+  "save_interval": 10,
+  "val_interval": 1,
+  "manualSeed": 2333,
+  "syncbn": true
+}
