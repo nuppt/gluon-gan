@@ -10,30 +10,64 @@ class ConditionalG(nn.Block):
         self._build_network()
 
     def forward(self, latent, label):
-        latent = self.latent_in_blk(latent)
-        label = self.label_in_blk(label)
-        x = self.mix_in_blk(latent, label)
-        out = self.out_blk(x)
-        return out
+        label = self.label_input_block(label)
+        input = self.com_input_block(latent, label)
+        img = self.net(input)
+        print(img)
+        return img
 
     def _build_network(self):
         #####################
-        # input layers: latent, label
+        # input layers
         #####################
-        self.latent_in_blk = nn.Sequential()
-        with self.latent_in_blk.name_scope():
-            self.latent_in_blk.add(nn.Dense(units=self.opt.z_dim, in_units=self.opt.nz, activation='relu'))
-            self.latent_in_blk.add(nn.LeakyReLU(0))
+        z_dim = self.opt.z_dim
+        num_classes = self.opt.num_classes
 
-        self.label_in_blk = nn.Sequential()
-        with self.label_in_blk.name_scope():
-            # self.label_in_blk.add(nn.Embedding(input_dim=self.opt.num_classes, output_dim=self.opt.embed_dim))
-            # self.label_in_blk.add(nn.Dense(units=self.opt.ngf))
-            self.label_in_blk.add(nn.Dense(units=self.opt.label_dim, in_units=self.opt.num_classes, activation='relu'))
-            self.label_in_blk.add(nn.LeakyReLU(0))
+        # Label embedding:
+        # ----------------
+        # Turns labels into dense vectors of size z_dim
+        # Produces 3D tensor with shape (batch_size, 1, z_dim)
+        self.label_input_block = nn.Sequential()
+        self.label_input_block.add(nn.Embedding(num_classes, z_dim))
 
-        self.mix_in_blk = nn.Lambda(lambda x, y: nd.concatenate([x, y], axis=1))
-        self.out_blk = nn.Dense(units=self.opt.out_dim, activation='sigmoid')
+        # Flatten the embedding 3D tensor into 2D tensor with shape (batch_size, z_dim)
+        self.label_input_block.add(nn.Flatten())
+
+        # Element-wise product of the vectors z and the label embeddings
+        self.com_input_block = nn.Lambda(lambda x, y: x + y)
+
+        #####################
+        # backbone
+        #####################
+        self.net = nn.Sequential()
+
+        # Reshape input into 7x7x256 tensor via a fully connected layer
+        self.net.add(nn.Dense(units=256 * 7 * 7, in_units=z_dim))
+        self.net.add(nn.Lambda(lambda x:  nd.reshape(x, shape=(-1, 7, 7, 256))))
+
+        # Transposed convolution layer, from 7x7x256 into 14x14x128 tensor
+        self.net.add(nn.Conv2DTranspose(128, kernel_size=3, strides=2, padding=(1,1)))
+
+        # Batch normalization
+        self.net.add(nn.BatchNorm())
+
+        # Leaky ReLU activation
+        self.net.add(nn.LeakyReLU(alpha=0.01))
+
+        # Transposed convolution layer, from 14x14x128 to 14x14x64 tensor
+        self.net.add(nn.Conv2DTranspose(64, kernel_size=3, strides=1, padding=(1,1)))
+
+        # Batch normalization
+        self.net.add(nn.BatchNorm())
+
+        # Leaky ReLU activation
+        self.net.add(nn.LeakyReLU(alpha=0.01))
+
+        # Transposed convolution layer, from 14x14x64 to 28x28x1 tensor
+        self.net.add(nn.Conv2DTranspose(1, kernel_size=3, strides=2, padding=(1,1)))
+
+        # Output layer with tanh activation
+        self.net.add(nn.Activation('tanh'))
 
 
 class ConditionalD(nn.Block):
@@ -44,33 +78,7 @@ class ConditionalD(nn.Block):
         self._build_network()
 
     def forward(self, image, label):
-        img_tensor = nd.reshape(image, shape=(self.opt.batch_size, self.opt.image_size, self.opt.image_size, self.opt.nc))
-        x = self.mix_in_blk(img_tensor, self.label_in_blk(label))
-        x = self.backbone(x)
-        out = self.out_blk(x)
-        return out
+        pass
 
     def _build_network(self):
-        #####################
-        # input layers: label
-        #####################
-        self.label_in_blk = nn.Sequential()
-        with self.label_in_blk.name_scope():
-            self.label_in_blk.add(nn.Embedding(input_dim=self.opt.num_classes, output_dim=self.opt.embeding_size))
-            self.label_in_blk.add(nn.Dense(units=self.opt.ndf))
-
-        self.mix_in_blk = nn.Lambda(lambda x, y: nd.concatenate(x, y))
-
-        #####################
-        # backbone
-        #####################
-        self.backbone = nn.Sequential()
-        with self.backbone.name_scope():
-            self.backbone.add(nn.Conv2DTranspose(channels=128, kernel_size=(4, 4), strides=(2, 2)))
-            self.backbone.add(nn.LeakyReLU(0.2))
-            self.backbone.add(nn.Conv2DTranspose(channels=128, kernel_size=(4, 4), strides=(2, 2)))
-            self.backbone.add(nn.LeakyReLU(0.2))
-            self.backbone.add(nn.Flatten())
-            self.backbone.add(nn.Dropout(0.5))
-
-        self.out_blk = nn.Dense(units=1, activation='sigmoid')
+        pass
