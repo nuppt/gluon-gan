@@ -12,8 +12,9 @@ class ConditionalG(nn.Block):
 
     def forward(self, latent, label):
         label = self.label_input_block(label)
-        input = self.com_input_block(latent, label)
-        img = self.net(input)
+        combined_input = self.combined_input_block(latent, label)
+        conv_input = self.fc_block(combined_input)
+        img = self.backbone(conv_input)
         print(img)
         return img
 
@@ -23,6 +24,7 @@ class ConditionalG(nn.Block):
         # 1. label
         # 2. z (latent vector)
         #####################
+        batch_size = self.opt.batch_size
         z_dim = self.opt.z_dim
         num_classes = self.opt.num_classes
 
@@ -34,40 +36,43 @@ class ConditionalG(nn.Block):
         self.label_input_block.add(nn.Flatten())
 
         # Element-wise product of the vectors z and the label embeddings
-        self.com_input_block = nn.Lambda(lambda x, y: x + y)
+        self.combined_input_block = nn.Lambda(lambda x, y: x + y)
+
+        # Reshape input into 256*7*7 tensor (2-D tensor) via a fully connected layer
+        # Then convert to a 4-D (B, C, H, W)
+        self.fc_block = nn.Sequential()
+        with self.fc_block.name_scope():
+            self.fc_block.add(nn.Dense(units=256 * 7 * 7, in_units=z_dim),
+                              nn.Lambda(lambda x:  nd.reshape(x, shape=(batch_size, 256, 7, 7))))
 
         #####################
         # backbone
         #####################
-        self.net = nn.Sequential()
+        self.backbone = nn.Sequential()
 
-        # Reshape input into 7x7x256 tensor via a fully connected layer
-        self.net.add(nn.Dense(units=256 * 7 * 7, in_units=z_dim))
-        self.net.add(nn.Lambda(lambda x:  nd.reshape(x, shape=(-1, 256, 7, 7))))
-
-        # Transposed convolution layer, from 7x7x256 into 14x14x128 tensor
-        self.net.add(nn.Conv2DTranspose(128, kernel_size=3, strides=2, padding=(1,1), output_padding=(1,1)))
+        # Transposed convolution layer, from 256*7*7 into 128*14*14 tensor
+        self.backbone.add(nn.Conv2DTranspose(128, kernel_size=3, strides=2, padding=(1,1)))
 
         # Batch normalization
-        self.net.add(nn.BatchNorm())
+        self.backbone.add(nn.BatchNorm())
 
         # Leaky ReLU activation
-        self.net.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.01))
 
         # Transposed convolution layer, from 14x14x128 to 14x14x64 tensor
-        self.net.add(nn.Conv2DTranspose(64, kernel_size=3, strides=1, padding=(1,1), output_padding=(0,0)))
+        self.backbone.add(nn.Conv2DTranspose(64, kernel_size=3, strides=1, padding=(1,1)))
 
         # Batch normalization
-        self.net.add(nn.BatchNorm())
+        self.backbone.add(nn.BatchNorm())
 
         # Leaky ReLU activation
-        self.net.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.01))
 
         # Transposed convolution layer, from 14x14x64 to 28x28x1 tensor
-        self.net.add(nn.Conv2DTranspose(1, kernel_size=3, strides=2, padding=(1,1), output_padding=(1,1)))
+        self.backbone.add(nn.Conv2DTranspose(1, kernel_size=3, strides=2, padding=(1,1)))
 
         # Output layer with tanh activation
-        self.net.add(nn.Activation('tanh'))
+        self.backbone.add(nn.Activation('tanh'))
 
 
 class ConditionalD(nn.Block):
