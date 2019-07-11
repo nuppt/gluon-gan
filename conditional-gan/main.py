@@ -25,6 +25,7 @@ def dot_opt(opt):
 @ex.automain
 def main(opt):
     opt = dot_opt(opt)
+    ctx = try_gpu()
 
     # datasets
     # mnist_train_dataset = MNISTDataset(train=True, transform=transform)
@@ -37,10 +38,14 @@ def main(opt):
 
     # Conditional GAN: G and D
     netG = ConditionalG(opt)
-    ctx = try_gpu()
     netG.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
     init_z = nd.array(np.ones(shape=(opt.batch_size, opt.z_dim)), ctx=ctx)
-    # init_label = nd.array(np.ones(shape=(opt.batch_size, opt.num_classes)), ctx=ctx)
-    # label = Input(shape=(1,), dtype='int32')
     init_label = nd.array(np.ones(shape=(opt.batch_size, 1)), ctx=ctx)
-    netG(init_z, init_label)
+    img = netG(init_z, init_label)
+
+
+    netD = ConditionalD(opt)
+    netD.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
+    cls = netD(img, init_label)
+    print(cls)
+
