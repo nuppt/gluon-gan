@@ -113,32 +113,32 @@ class ConditionalD(nn.Block):
         #####################
         # backbone
         #####################
-        self.net = nn.Sequential()
+        self.backbone = nn.Sequential()
 
         # Convolutional layer, from 28x28x2 into 14x14x64 tensor
-        self.net.add(nn.Conv2D(64, kernel_size=3, strides=2, in_channels=2, padding=(1,1)))
+        self.backbone.add(nn.Conv2D(64, kernel_size=3, strides=2, in_channels=2, padding=(1,1)))
 
         # Leaky ReLU activation
-        self.net.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.01))
 
         # Convolutional layer, from 14x14x64 into 7x7x64 tensor
-        self.net.add(nn.Conv2D(64, kernel_size=3, strides=2, padding=(1,1)))
+        self.backbone.add(nn.Conv2D(64, kernel_size=3, strides=2, padding=(1,1)))
 
         # Batch normalization
-        self.net.add(nn.BatchNorm())
+        self.backbone.add(nn.BatchNorm())
 
         # Leaky ReLU activation
-        self.net.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.01))
 
         # Convolutional layer, from 7x7x64 tensor into 3x3x128 tensor
-        self.net.add(nn.Conv2D(64, kernel_size=3, strides=2, padding=(1,1)))
+        self.backbone.add(nn.Conv2D(64, kernel_size=3, strides=2, padding=(1,1)))
 
         # Batch normalization
-        self.net.add(nn.BatchNorm())
+        self.backbone.add(nn.BatchNorm())
 
         # Leaky ReLU
-        self.net.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.01))
 
         # Output layer with sigmoid activation
-        self.net.add(nn.Flatten())
-        self.net.add(nn.Dense(1, activation='sigmoid'))
+        self.backbone.add(nn.Flatten())
+        self.backbone.add(nn.Dense(1, activation='sigmoid'))

@@ -25,6 +25,15 @@ def try_gpu(gpu_id=0):
     return ctx
 
 
+def try_gpus(gpu_id_list=[0]):
+    try:
+        ctx = [mx.gpu(gpu_id) for gpu_id in gpu_id_list]
+        _ = nd.array([0], ctx=ctx)
+    except Exception:
+        ctx = [mx.cpu()]
+    return ctx
+
+
 def try_all_gpus():
     """Return all available GPUs, or [mx.gpu()] if there is no GPU"""
     ctx_list = []

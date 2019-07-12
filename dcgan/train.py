@@ -111,8 +111,6 @@ def train_step(dataloader, net_G, net_D, trainer_G, trainer_D, loss_f, opt, ctx,
         ############################
         # (2) Update G network    maximize log(D(G(z)))
         ############################
-        # in case our last batch was the tail batch of the dataloader,
-        # make sure we feed a full batch of noise
         noise = mx.ndarray.random.normal(shape=(opt.batchSize, opt.nz, 1, 1), ctx=ctx)
         real_label = nd.ones((opt.batchSize,), ctx)
         with autograd.record():

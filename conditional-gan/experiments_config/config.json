@@ -2,10 +2,10 @@
   "db_url": "localhost:27017",
   "db_name": "gan",
 
-  "batch_size": 30,
+  "batch_size": 32,
   "dataset": "mnist",
   "num_workers": 4,
-  "gpus": "0,3,7",
+  "gpus": "0",
 
   "image_nc": 1,
   "image_size": 28,
@@ -13,9 +13,6 @@
   "ndf": 64,
   "num_classes": 10,
   "z_dim": 200,
-  "label_dim": 1000,
-  "out_dim": 784,
-
 
   "num_epochs": 240,
   "resume": "",

@@ -28,13 +28,13 @@ def main(opt):
     ctx = try_gpu()
 
     # datasets
-    # mnist_train_dataset = MNISTDataset(train=True, transform=transform)
-    # assert mnist_train_dataset
-    #
-    # dataloader = DataLoader(mnist_train_dataset, batch_size=opt.batch_size,
-    #                         shuffle=True, last_batch='discard',
-    #                         pin_memory=True, num_workers=opt.num_workers)
-    # print("Data ready...")
+    mnist_train_dataset = MNISTDataset(train=True, transform=transform)
+    assert mnist_train_dataset
+
+    dataloader = DataLoader(mnist_train_dataset, batch_size=opt.batch_size,
+                            shuffle=True, last_batch='discard',
+                            pin_memory=True, num_workers=opt.num_workers)
+    print("Data ready...")
 
     # Conditional GAN: G and D
     netG = ConditionalG(opt)
