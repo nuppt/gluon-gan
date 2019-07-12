@@ -21,7 +21,8 @@ class CGANTrainer:
         :param networks:  GAN G and D
         """
         self.opt = opt
-        self.ctx = try_gpus(self.opt.gpus)
+
+        self.ctx = try_gpu()  #try_gpus(self.opt.gpus)
         self.dataloader = train_dataset
         self.netG = networks['netG']
         self.netD = networks['netD']
@@ -39,10 +40,10 @@ class CGANTrainer:
         self.loss_f = loss.SigmoidBinaryCrossEntropyLoss()
 
     def _define_optimizers(self):
-        trainerG = Trainer(self.netG.collect_params(), optimizer='adam',
-                           optimizer_params={'learning_rate': self.opt.lrG, 'beta1': self.opt.beta1, 'beta2': 0.999})
-        trainerD = Trainer(self.netD.collect_params(), optimizer='adam',
-                           optimizer_params={'learning_rate': self.opt.lrD, 'beta1': self.opt.beta1, 'beta2': 0.999})
+        self.trainerG = Trainer(self.netG.collect_params(), optimizer='adam',
+                                optimizer_params={'learning_rate': self.opt.lr, 'beta1': self.opt.beta1, 'beta2': self.opt.beta2})
+        self.trainerD = Trainer(self.netD.collect_params(), optimizer='adam',
+                                optimizer_params={'learning_rate': self.opt.lr, 'beta1': self.opt.beta1, 'beta2': self.opt.beta2})
 
     def train(self):
         """Entry of Training process."""
@@ -74,9 +75,9 @@ class CGANTrainer:
         :return:
         """
         for i, (real, label) in enumerate(self.dataloader):
-            start_time = time.time()
-            iter_id = epoch * len(self.dataloader) // self.opt.batch_size + i
-            self.real_img = real.as_in_context(self.ctx)
+            # start_time = time.time()
+            # iter_id = epoch * len(self.dataloader) // self.opt.batch_size + i
+            self.real_img = nd.transpose(real, axes=(0,3,1,2)).as_in_context(self.ctx)
             self.label = label.as_in_context(self.ctx)
 
             self._optimize_parameters()  # One step of updating parameters
@@ -88,18 +89,36 @@ class CGANTrainer:
         3. Update parameters
         """
 
+        self.real_mask = nd.ones(shape=(self.opt.batch_size))
+        self.fake_mask = nd.zeros(shape=(self.opt.batch_size))
+        self.z = nd.random.normal(shape=(self.opt.batch_size, self.opt.z_dim))
+
         ############################
-        # (1) Update D network:   maximize log(D(x)) + log(1 - D(G(z)))
-        #   x: real image
-        #   G(z): fake image
+        # Update D network
+        #
+        # From D perspective,  the goal is to:
+        #     maximize log(D(real_image)) + log(1 - D(fake_image))
         ############################
         with autograd.record():
-            real_D_label = nd.ones((self.opt.batch_size,), self.ctx)
-            fake_D_label = nd.zeros((self.opt.batch_size,), self.ctx)
+            # For D, negative samples
+            fake_img = self.netG(self.z, self.label)
+            fake_pred = self.netD(fake_img.detach(), self.label)
+            real_pred = self.netD(self.real_img, self.label)
 
-            pred_D_real = self.netD(self.real_img)
-            fake_img = self.netG(self.)
+            loss_D_real = self.loss_f(real_pred, self.real_mask)
+            loss_D_fake = self.loss_f(fake_pred, self.fake_mask)
+            self.loss_D = 0.5 * (loss_D_real + loss_D_fake)
 
+        self.loss_D.backward(retain_graph=True)
+        self.trainerD.step(1)
 
-        # Update parameters of generators G
-        self.trainer_G.step(1)
+        ############################
+        # Update G network
+        #
+        # From G perspective,  the goal is to:
+        #     maximize log(D(fake_image))
+        ############################
+        with autograd.record():
+            self.loss_G = self.loss_f(fake_pred, self.real_mask)
+        self.loss_G.backward()
+        self.trainerG.step(1, ignore_stale_grad=True)

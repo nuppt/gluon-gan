@@ -8,6 +8,7 @@ from transform import transform
 from model import *
 import numpy as np
 from utils import *
+from train import CGANTrainer
 from mxnet import init, nd
 
 
@@ -38,14 +39,7 @@ def main(opt):
 
     # Conditional GAN: G and D
     netG = ConditionalG(opt)
-    netG.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
-    init_z = nd.array(np.ones(shape=(opt.batch_size, opt.z_dim)), ctx=ctx)
-    init_label = nd.array(np.ones(shape=(opt.batch_size, 1)), ctx=ctx)
-    img = netG(init_z, init_label)
-
-
     netD = ConditionalD(opt)
-    netD.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=ctx)
-    cls = netD(img, init_label)
-    print(cls)
 
+    trainer = CGANTrainer(opt, dataloader, netG=netG, netD=netD)
+    trainer.train()

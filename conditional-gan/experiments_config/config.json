@@ -20,8 +20,8 @@
   "lr": 0.001,
   "lr_decay": 0.1,
   "lr_decay_epoch": "160,200",
-  "momentum": 0.9,
-  "wd": 0.0005,
+  "beta1": 0.5,
+  "beta2": 0.999,
 
   "save_prefix": "",
   "save_interval": 10,

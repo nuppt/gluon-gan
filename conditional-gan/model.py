@@ -51,7 +51,7 @@ class ConditionalG(nn.Block):
         self.backbone = nn.Sequential()
 
         # Transposed convolution layer, from 256*7*7 into 128*14*14 tensor
-        self.backbone.add(nn.Conv2DTranspose(128, kernel_size=3, strides=2, padding=(1,1)))
+        self.backbone.add(nn.Conv2DTranspose(128, kernel_size=3, strides=2, padding=(1,1), output_padding=(1,1)))
 
         # Batch normalization
         self.backbone.add(nn.BatchNorm())
@@ -60,7 +60,7 @@ class ConditionalG(nn.Block):
         self.backbone.add(nn.LeakyReLU(alpha=0.01))
 
         # Transposed convolution layer, from 14x14x128 to 14x14x64 tensor
-        self.backbone.add(nn.Conv2DTranspose(64, kernel_size=3, strides=1, padding=(1,1)))
+        self.backbone.add(nn.Conv2DTranspose(64, kernel_size=3, strides=1, padding=(1,1), output_padding=(0,0)))
 
         # Batch normalization
         self.backbone.add(nn.BatchNorm())
@@ -69,7 +69,7 @@ class ConditionalG(nn.Block):
         self.backbone.add(nn.LeakyReLU(alpha=0.01))
 
         # Transposed convolution layer, from 14x14x64 to 28x28x1 tensor
-        self.backbone.add(nn.Conv2DTranspose(1, kernel_size=3, strides=2, padding=(1,1)))
+        self.backbone.add(nn.Conv2DTranspose(1, kernel_size=3, strides=2, padding=(1,1), output_padding=(1,1)))
 
         # Output layer with tanh activation
         self.backbone.add(nn.Activation('tanh'))
@@ -86,7 +86,7 @@ class ConditionalD(nn.Block):
         label = self.label_input_block(label)
         print(image.shape, label.shape)
         input = self.com_input_block(image, label)
-        cls = self.net(input)
+        cls = self.backbone(input)
         return cls
 
     def _build_network(self):
@@ -108,7 +108,7 @@ class ConditionalD(nn.Block):
         self.label_input_block.add(nn.Lambda(lambda x:  nd.reshape(x, shape=(-1, img_nc, img_size, img_size))))
 
         # Element-wise product of the vectors z and the label embeddings
-        self.com_input_block = nn.Lambda(lambda x, y: nd.concatenate([x, y], axis=1))
+        self.com_input_block = nn.Lambda(lambda x, y: nd.concat(x, y, dim=1))
 
         #####################
         # backbone
