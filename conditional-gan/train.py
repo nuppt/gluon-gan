@@ -12,6 +12,7 @@ import time
 
 from utils import *
 from viz import *
+from sacred_cfg import ex
 
 class CGANTrainer:
     def __init__(self, opt, train_dataset, **networks):
@@ -61,37 +62,50 @@ class CGANTrainer:
         self._define_optimizers()
 
         print("Start training ...")
+
+        self.real_mask = nd.ones(shape=(self.opt.batch_size))
+        self.fake_mask = nd.zeros(shape=(self.opt.batch_size))
         for epoch in range(self.opt.num_epochs):
-            self._train_step(epoch)
+            self._train_on_epoch(epoch)
+            self._do_checkpoints(epoch)
 
-            # do checkpoints
-            self.netG.save_parameters('{0}/netG_epoch_{1}.param'.format(self.opt.experiment, epoch))
-            self.netD.save_parameters('{0}/netF_epoch_{1}.param'.format(self.opt.experiment, epoch))
-
-    def _train_step(self, epoch):
+    def _train_on_epoch(self, epoch):
         """
-        train on epoch (and do some checkpoint operations)
+        train on one epoch (and do some checkpoint operations)
         :param epoch:
         :return:
         """
         for i, (real, label) in enumerate(self.dataloader):
-            # start_time = time.time()
-            # iter_id = epoch * len(self.dataloader) // self.opt.batch_size + i
             self.real_img = nd.transpose(real, axes=(0,3,1,2)).as_in_context(self.ctx)
             self.label = label.as_in_context(self.ctx)
 
-            self._optimize_parameters()  # One step of updating parameters
+            batch_start = time.time()
+            self._train_on_batch()
+            batch_time = time.time() - batch_start
 
-    def _optimize_parameters(self):
+            self._monitor_on_batch(batch_time)
+
+    @ex.capture
+    def _monitor_on_batch(self, batch_time, _log):
+        _log.info(f"loss D: {self.loss_D.asnumpy()[0]:.4f}\t"
+                  f"loss G: {self.loss_G.asnumpy()[0]:.4f}\t"
+                  f"time: {batch_time:.2f}s")
+        # print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f,  time:[%f]'
+        #       % (epoch, self.opt.num_epochs, i, len(dataloader), gen_iterations,
+        #          errD.asnumpy()[0], errG.asnumpy()[0], errD_real.asnumpy()[0], errD_fake.asnumpy()[0],
+        #          time.time() - start_time))
+
+    def _do_checkpoints(self, epoch):
+        # do checkpoints
+        self.netG.save_parameters('{0}/netG_epoch_{1}.param'.format(self.opt.experiment, epoch))
+        self.netD.save_parameters('{0}/netD_epoch_{1}.param'.format(self.opt.experiment, epoch))
+
+    def _train_on_batch(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration.
-        1. Cal losses
-        2. Cal gradients
+        1. Forward pass: Cal predictions and losses
+        2. Backward pass: Cal gradients
         3. Update parameters
         """
-
-        self.real_mask = nd.ones(shape=(self.opt.batch_size))
-        self.fake_mask = nd.zeros(shape=(self.opt.batch_size))
-        self.z = nd.random.normal(shape=(self.opt.batch_size, self.opt.z_dim))
 
         ############################
         # Update D network
@@ -100,10 +114,10 @@ class CGANTrainer:
         #     maximize log(D(real_image)) + log(1 - D(fake_image))
         ############################
         with autograd.record():
-            # For D, negative samples
-            fake_img = self.netG(self.z, self.label)
-            fake_pred = self.netD(fake_img.detach(), self.label)
-            real_pred = self.netD(self.real_img, self.label)
+            z = nd.random.normal(shape=(self.opt.batch_size, self.opt.z_dim))
+            self.fake_img = self.netG(z, self.label)
+            fake_pred = self.netD(self.fake_img.detach(), self.label)  # negative samples for D
+            real_pred = self.netD(self.real_img, self.label)      # positive samples for D
 
             loss_D_real = self.loss_f(real_pred, self.real_mask)
             loss_D_fake = self.loss_f(fake_pred, self.fake_mask)

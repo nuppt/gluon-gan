@@ -15,7 +15,6 @@ class ConditionalG(nn.Block):
         combined_input = self.combined_input_block(latent, label)
         conv_input = self.fc_block(combined_input)
         img = self.backbone(conv_input)
-        print(img)
         return img
 
     def _build_network(self):
@@ -84,7 +83,7 @@ class ConditionalD(nn.Block):
 
     def forward(self, image, label):
         label = self.label_input_block(label)
-        print(image.shape, label.shape)
+        # print(image.shape, label.shape)
         input = self.com_input_block(image, label)
         cls = self.backbone(input)
         return cls
