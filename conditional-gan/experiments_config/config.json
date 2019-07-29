@@ -12,7 +12,7 @@
   "ngf": 64,
   "ndf": 64,
   "num_classes": 10,
-  "z_dim": 200,
+  "z_dim": 100,
 
   "num_epochs": 240,
   "resume": "",
@@ -20,12 +20,13 @@
   "lr": 0.001,
   "lr_decay": 0.1,
   "lr_decay_epoch": "160,200",
-  "beta1": 0.5,
+  "beta1": 0.9,
   "beta2": 0.999,
+  "init_gain": 0.02,
 
   "save_prefix": "",
   "save_interval": 10,
+  "experiment": "./experiments",
   "val_interval": 1,
-  "manualSeed": 2333,
-  "syncbn": true
+  "manualSeed": 2333
 }

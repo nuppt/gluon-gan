@@ -24,18 +24,25 @@ class CGANTrainer:
         self.opt = opt
 
         self.ctx = try_gpu()  #try_gpus(self.opt.gpus)
+        self.iter = 0
         self.dataloader = train_dataset
         self.netG = networks['netG']
         self.netD = networks['netD']
 
     def _init_networks(self):
+        # self.netG.initialize(init.Orthogonal(scale=self.opt.init_gain), ctx=self.ctx)
+        # self.netD.initialize(init.Orthogonal(scale=self.opt.init_gain), ctx=self.ctx)
+        # init_z = nd.ones(shape=(self.opt.batch_size, self.opt.z_dim), ctx=self.ctx)
+        # init_label = nd.ones(shape=(self.opt.batch_size, 1), ctx=self.ctx)
+
         self.netG.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=self.ctx)
         self.netD.initialize(init.Xavier(factor_type='in', magnitude=0.01), ctx=self.ctx)
 
-        init_z = nd.array(np.ones(shape=(self.opt.batch_size, self.opt.z_dim)), ctx=self.ctx)
-        init_label = nd.array(np.ones(shape=(self.opt.batch_size, 1)), ctx=self.ctx)
-        fake_img = self.netG(init_z, init_label)
-        _ = self.netD(fake_img, init_label)
+        init_z = nd.random.uniform(-1, 1, shape=(self.opt.batch_size, self.opt.z_dim), ctx=self.ctx)
+        init_label = nd.random.uniform(-1, 1, shape=(self.opt.batch_size, 1), ctx=self.ctx)
+
+        gen_img = self.netG(init_z, init_label)
+        _ = self.netD(gen_img, init_label)
 
     def _define_loss(self):
         self.loss_f = loss.SigmoidBinaryCrossEntropyLoss()
@@ -63,8 +70,9 @@ class CGANTrainer:
 
         print("Start training ...")
 
-        self.real_mask = nd.ones(shape=(self.opt.batch_size))
-        self.fake_mask = nd.zeros(shape=(self.opt.batch_size))
+        self.real_mask = nd.ones(shape=(self.opt.batch_size,), ctx=self.ctx)
+        self.fake_mask = nd.zeros(shape=(self.opt.batch_size,), ctx=self.ctx)
+
         for epoch in range(self.opt.num_epochs):
             self._train_on_epoch(epoch)
             self._do_checkpoints(epoch)
@@ -76,7 +84,7 @@ class CGANTrainer:
         :return:
         """
         for i, (real, label) in enumerate(self.dataloader):
-            self.real_img = nd.transpose(real, axes=(0,3,1,2)).as_in_context(self.ctx)
+            self.real_img = real.as_in_context(self.ctx)
             self.label = label.as_in_context(self.ctx)
 
             batch_start = time.time()
@@ -84,12 +92,15 @@ class CGANTrainer:
             batch_time = time.time() - batch_start
 
             self._monitor_on_batch(batch_time)
+            self.iter += 1
 
     @ex.capture
     def _monitor_on_batch(self, batch_time, _log):
         _log.info(f"loss D: {self.loss_D.asnumpy()[0]:.4f}\t"
                   f"loss G: {self.loss_G.asnumpy()[0]:.4f}\t"
                   f"time: {batch_time:.2f}s")
+
+
         # print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f,  time:[%f]'
         #       % (epoch, self.opt.num_epochs, i, len(dataloader), gen_iterations,
         #          errD.asnumpy()[0], errG.asnumpy()[0], errD_real.asnumpy()[0], errD_fake.asnumpy()[0],
@@ -97,8 +108,12 @@ class CGANTrainer:
 
     def _do_checkpoints(self, epoch):
         # do checkpoints
-        self.netG.save_parameters('{0}/netG_epoch_{1}.param'.format(self.opt.experiment, epoch))
-        self.netD.save_parameters('{0}/netD_epoch_{1}.param'.format(self.opt.experiment, epoch))
+        # self.netG.save_parameters('{0}/netG_epoch_{1}.param'.format(self.opt.experiment, epoch))
+        # self.netD.save_parameters('{0}/netD_epoch_{1}.param'.format(self.opt.experiment, epoch))
+
+        if self.iter % 100 == 0:
+            save_images(self.real_img.asnumpy().transpose(0, 2, 3, 1), '{0}/real_samples_{1}.png'.format(self.opt.experiment, epoch))
+            save_images(self.gen_img.asnumpy().transpose(0, 2, 3, 1), '{0}/fake_samples_{1}.png'.format(self.opt.experiment, epoch))
 
     def _train_on_batch(self):
         """Calculate losses, gradients, and update network weights; called in every training iteration.
@@ -114,16 +129,16 @@ class CGANTrainer:
         #     maximize log(D(real_image)) + log(1 - D(fake_image))
         ############################
         with autograd.record():
-            z = nd.random.normal(shape=(self.opt.batch_size, self.opt.z_dim))
-            self.fake_img = self.netG(z, self.label)
-            fake_pred = self.netD(self.fake_img.detach(), self.label)  # negative samples for D
-            real_pred = self.netD(self.real_img, self.label)      # positive samples for D
+            z = nd.random.normal(0, 1, shape=(self.opt.batch_size, self.opt.z_dim), ctx=self.ctx)
+            gen_img = self.netG(z, self.label)
+            fake_pred = self.netD(gen_img.detach(), self.label)  # negative samples for D
+            real_pred = self.netD(self.real_img, self.label)     # positive samples for D
 
             loss_D_real = self.loss_f(real_pred, self.real_mask)
             loss_D_fake = self.loss_f(fake_pred, self.fake_mask)
             self.loss_D = 0.5 * (loss_D_real + loss_D_fake)
 
-        self.loss_D.backward(retain_graph=True)
+        self.loss_D.backward()
         self.trainerD.step(1)
 
         ############################
@@ -133,6 +148,10 @@ class CGANTrainer:
         #     maximize log(D(fake_image))
         ############################
         with autograd.record():
+            z = nd.random.normal(0, 1, shape=(self.opt.batch_size, self.opt.z_dim), ctx=self.ctx)
+            labels = nd.random.randint(0, self.opt.num_classes, (self.opt.batch_size,), ctx=self.ctx)
+            self.gen_img = self.netG(z, labels)
+            fake_pred = self.netD(self.gen_img, labels)
             self.loss_G = self.loss_f(fake_pred, self.real_mask)
         self.loss_G.backward()
-        self.trainerG.step(1, ignore_stale_grad=True)
+        self.trainerG.step(1)

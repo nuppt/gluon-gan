@@ -35,7 +35,7 @@ class ConditionalG(nn.Block):
         self.label_input_block.add(nn.Flatten())
 
         # Element-wise product of the vectors z and the label embeddings
-        self.combined_input_block = nn.Lambda(lambda x, y: x + y)
+        self.combined_input_block = nn.Lambda(lambda x, y: x * y)
 
         # Reshape input into 256*7*7 tensor (2-D tensor) via a fully connected layer
         # Then convert to a 4-D (B, C, H, W)
@@ -56,7 +56,7 @@ class ConditionalG(nn.Block):
         self.backbone.add(nn.BatchNorm())
 
         # Leaky ReLU activation
-        self.backbone.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.2))
 
         # Transposed convolution layer, from 14x14x128 to 14x14x64 tensor
         self.backbone.add(nn.Conv2DTranspose(64, kernel_size=3, strides=1, padding=(1,1), output_padding=(0,0)))
@@ -65,13 +65,13 @@ class ConditionalG(nn.Block):
         self.backbone.add(nn.BatchNorm())
 
         # Leaky ReLU activation
-        self.backbone.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.2))
 
         # Transposed convolution layer, from 14x14x64 to 28x28x1 tensor
         self.backbone.add(nn.Conv2DTranspose(1, kernel_size=3, strides=2, padding=(1,1), output_padding=(1,1)))
 
         # Output layer with tanh activation
-        self.backbone.add(nn.Activation('tanh'))
+        # self.backbone.add(nn.Activation('tanh'))
 
 
 class ConditionalD(nn.Block):
@@ -85,7 +85,9 @@ class ConditionalD(nn.Block):
         label = self.label_input_block(label)
         # print(image.shape, label.shape)
         input = self.com_input_block(image, label)
-        cls = self.backbone(input)
+        features = self.backbone(input)
+        # print(f"features: {features}")
+        cls = self.out(features)
         return cls
 
     def _build_network(self):
@@ -118,7 +120,7 @@ class ConditionalD(nn.Block):
         self.backbone.add(nn.Conv2D(64, kernel_size=3, strides=2, in_channels=2, padding=(1,1)))
 
         # Leaky ReLU activation
-        self.backbone.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.2))
 
         # Convolutional layer, from 14x14x64 into 7x7x64 tensor
         self.backbone.add(nn.Conv2D(64, kernel_size=3, strides=2, padding=(1,1)))
@@ -127,7 +129,7 @@ class ConditionalD(nn.Block):
         self.backbone.add(nn.BatchNorm())
 
         # Leaky ReLU activation
-        self.backbone.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.2))
 
         # Convolutional layer, from 7x7x64 tensor into 3x3x128 tensor
         self.backbone.add(nn.Conv2D(64, kernel_size=3, strides=2, padding=(1,1)))
@@ -136,8 +138,9 @@ class ConditionalD(nn.Block):
         self.backbone.add(nn.BatchNorm())
 
         # Leaky ReLU
-        self.backbone.add(nn.LeakyReLU(alpha=0.01))
+        self.backbone.add(nn.LeakyReLU(alpha=0.2))
 
         # Output layer with sigmoid activation
-        self.backbone.add(nn.Flatten())
-        self.backbone.add(nn.Dense(1, activation='sigmoid'))
+        self.out = nn.Sequential()
+        self.out.add(nn.Flatten())
+        self.out.add(nn.Dense(1))
