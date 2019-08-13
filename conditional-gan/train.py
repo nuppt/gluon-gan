@@ -14,6 +14,7 @@ from utils import *
 from viz import *
 from sacred_cfg import ex
 
+
 class CGANTrainer:
     def __init__(self, opt, train_dataset, **networks):
         """
@@ -95,16 +96,12 @@ class CGANTrainer:
             self.iter += 1
 
     @ex.capture
-    def _monitor_on_batch(self, batch_time, _log):
+    def _monitor_on_batch(self, batch_time, _log, _run):
         _log.info(f"loss D: {self.loss_D.asnumpy()[0]:.4f}\t"
                   f"loss G: {self.loss_G.asnumpy()[0]:.4f}\t"
                   f"time: {batch_time:.2f}s")
-
-
-        # print('[%d/%d][%d/%d][%d] Loss_D: %f Loss_G: %f Loss_D_real: %f Loss_D_fake %f,  time:[%f]'
-        #       % (epoch, self.opt.num_epochs, i, len(dataloader), gen_iterations,
-        #          errD.asnumpy()[0], errG.asnumpy()[0], errD_real.asnumpy()[0], errD_fake.asnumpy()[0],
-        #          time.time() - start_time))
+        _run.log_scalar("loss D", self.loss_D.asnumpy()[0], self.iter)
+        _run.log_scalar("loss G", self.loss_G.asnumpy()[0], self.iter)
 
     def _do_checkpoints(self, epoch):
         # do checkpoints
