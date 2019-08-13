@@ -5,12 +5,12 @@ Gluon implementation for fancy GAN models.
 | Title                                            | Paper link                         | Code | Summary |
 | ------------------------------------------------ | ---------------------------------- | ---- | ------------------------------------------------ |
 | Generative Adversarial Networks (GAN)            | <https://arxiv.org/abs/1406.2661>  | TODO | TODO |
-| Deep Convolutional GAN (DCGAN)                   | <https://arxiv.org/abs/1511.06434> | TODO | TODO |
-| Wasserstein GAN (WGAN)                           | <https://arxiv.org/abs/1701.07875>   | TODO | TODO |
+| Deep Convolutional GAN (DCGAN)                   | <https://arxiv.org/abs/1511.06434> | dcgan/ | TODO |
+| Wasserstein GAN (WGAN)                           | <https://arxiv.org/abs/1701.07875>   | wgan/ | TODO |
 | WGAN-GP                                          | <https://arxiv.org/abs/1704.00028>   | TODO | TODO |
-| CycleGAN                                         | <https://arxiv.org/abs/1703.10593>   | TODO | TODO |
+| CycleGAN                                         | <https://arxiv.org/abs/1703.10593>   | cyclegan/ | TODO |
 | Pix2Pix                                          | <https://arxiv.org/abs/1611.07004> | TODO | TODO |
-| Conditional GAN (CGAN)                           | <https://arxiv.org/abs/1411.1784>  | TODO | TODO |
+| Conditional GAN (CGAN)                           | <https://arxiv.org/abs/1411.1784>  | conditional-gan/ | TODO |
 | BEGAN                                            | <https://arxiv.org/abs/1703.10717> | TODO | TODO |
 | BicycleGAN                                       | <https://arxiv.org/abs/1711.11586> | TODO | TODO |
 | Boundary seeking GAN                             | <https://arxiv.org/abs/1611.06430> | TODO | TODO |
