@@ -1,7 +1,7 @@
 # gluon-gan
 Gluon implementation for fancy GAN models.
 
-# Funny GAN models
+# Most famous GAN models
 | Title                                            | Paper link                         | Code | Summary |
 | ------------------------------------------------ | ---------------------------------- | ---- | ------------------------------------------------ |
 | Generative Adversarial Networks (GAN)            | <https://arxiv.org/abs/1406.2661>  | TODO | TODO |
